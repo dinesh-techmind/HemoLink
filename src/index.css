@@ -1,19 +1,49 @@
 @import "tailwindcss";
 
+:root {
+  --bg-base: #0D0D0D;
+  --bg-card: #161616;
+  --bg-surface: #1E1E1E;
+  --border-color: #2A2A2A;
+
+  --text-bright: #F5F5F5;
+  --text-muted: #A0A0A0;
+  --text-subtle: #737373;
+
+  --map-bg: #111111;
+  --map-popup-bg: #161616;
+  --map-text: #F5F5F5;
+}
+
+.light-mode {
+  --bg-base: #F8FAFC;
+  --bg-card: #FFFFFF;
+  --bg-surface: #F1F5F9;
+  --border-color: #E2E8F0;
+
+  --text-bright: #0F172A;
+  --text-muted: #475569;
+  --text-subtle: #64748B;
+
+  --map-bg: #E2E8F0;
+  --map-popup-bg: #FFFFFF;
+  --map-text: #0F172A;
+}
+
 @theme {
   --font-sans: "DM Sans", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   --font-display: "Syne", sans-serif;
 
   --color-brand-red: #E63946;
   --color-brand-red-dark: #C1121F;
-  --color-base-dark: #0D0D0D;
-  --color-card-dark: #161616;
-  --color-surface-dark: #1E1E1E;
-  --color-border-dark: #2A2A2A;
+  --color-base-dark: var(--bg-base);
+  --color-card-dark: var(--bg-card);
+  --color-surface-dark: var(--bg-surface);
+  --color-border-dark: var(--border-color);
 
-  --color-text-bright: #F5F5F5;
-  --color-text-muted: #A0A0A0;
-  --color-text-subtle: #5C5C5C;
+  --color-text-bright: var(--text-bright);
+  --color-text-muted: var(--text-muted);
+  --color-text-subtle: var(--text-subtle);
 
   /* Blood Group badging */
   --color-ap: #FF6B6B;
@@ -44,41 +74,41 @@
   width: 8px;
 }
 ::-webkit-scrollbar-track {
-  background: #0D0D0D;
+  background: var(--bg-base);
 }
 ::-webkit-scrollbar-thumb {
-  background: #2A2A2A;
+  background: var(--border-color);
   border-radius: 4px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #3E3E3E;
+  background: var(--bg-surface);
 }
 
-/* Leaflet dark styling */
+/* Leaflet dark/light styling */
 .leaflet-container {
-  background: #111111 !important;
+  background: var(--map-bg) !important;
   font-family: inherit;
 }
 .leaflet-bar {
-  border: 1px solid #2A2A2A !important;
+  border: 1px solid var(--border-color) !important;
   box-shadow: none !important;
 }
 .leaflet-bar a {
-  background-color: #161616 !important;
-  color: #F5F5F5 !important;
-  border-bottom: 1px solid #2A2A2A !important;
+  background-color: var(--bg-card) !important;
+  color: var(--text-bright) !important;
+  border-bottom: 1px solid var(--border-color) !important;
 }
 .leaflet-bar a:hover {
-  background-color: #1E1E1E !important;
-  color: #FFFFFF !important;
+  background-color: var(--bg-surface) !important;
+  color: var(--text-bright) !important;
 }
 .leaflet-popup-content-wrapper {
-  background: #161616 !important;
-  color: #F5F5F5 !important;
-  border: 1px solid #2A2A2A;
+  background: var(--map-popup-bg) !important;
+  color: var(--map-text) !important;
+  border: 1px solid var(--border-color);
   border-radius: 12px !important;
 }
 .leaflet-popup-tip {
-  background: #161616 !important;
-  border: 1px solid #2A2A2A;
+  background: var(--map-popup-bg) !important;
+  border: 1px solid var(--border-color);
 }

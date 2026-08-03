@@ -28,7 +28,9 @@ import {
   Lock,
   UserPlus,
   Bell,
-  Mail
+  Mail,
+  Sun,
+  Moon
 } from "lucide-react";
 
 // List of standard blood groups
@@ -66,6 +68,19 @@ export default function App() {
   const [emergencies, setEmergencies] = useState<EmergencyRequest[]>(store.getEmergencies());
   const [chats, setChats] = useState<Chat[]>(store.getChats());
   const [activeTab, setActiveTab] = useState<"search" | "emergency" | "profile" | "chats" | "admin">("search");
+
+  // Dark & Light Theme Mode State
+  const [isDarkMode, setIsDarkMode] = useState<boolean>(() => localStorage.getItem("hemolink_theme") !== "light");
+
+  useEffect(() => {
+    if (isDarkMode) {
+      document.documentElement.classList.remove("light-mode");
+      localStorage.setItem("hemolink_theme", "dark");
+    } else {
+      document.documentElement.classList.add("light-mode");
+      localStorage.setItem("hemolink_theme", "light");
+    }
+  }, [isDarkMode]);
 
   // Filter & Search states
   const [searchBlood, setSearchBlood] = useState<string>("All");
@@ -501,10 +516,10 @@ export default function App() {
             </div>
             <div>
               <h1 className="text-2xl font-extrabold tracking-tight text-text-bright font-display">
-                Emergency Blood Finder
+                HEMOLINK
               </h1>
               <p className="text-[10px] text-text-muted font-bold uppercase tracking-widest mt-0.5">
-                Secure Authentication Gateway
+                Emergency Blood Network Gateway
               </p>
             </div>
           </div>
@@ -740,7 +755,7 @@ export default function App() {
   }
 
   return (
-    <div className="flex flex-col min-h-screen text-[#F5F5F5] bg-[#0D0D0D] font-sans selection:bg-brand-red selection:text-white">
+    <div className={`flex flex-col min-h-screen ${isDarkMode ? "bg-[#0D0D0D] text-[#F5F5F5]" : "bg-slate-50 text-slate-900 light-mode"} font-sans selection:bg-brand-red selection:text-white transition-colors duration-200`}>
       {/* Upper Alerts Ribbon for Critical Emergencies */}
       {emergencies.filter((e) => e.status === "Active" && e.urgencyLevel === "Critical").length > 0 && (
         <div className="bg-brand-red text-white py-2 px-4 text-center text-xs font-bold tracking-wide animate-pulse flex items-center justify-center gap-2">
@@ -758,10 +773,10 @@ export default function App() {
             </div>
             <div>
               <h1 className="text-xl font-extrabold tracking-tight text-text-bright font-display">
-                Emergency Blood Donor Finder
+                HEMOLINK
               </h1>
               <p className="text-[10px] text-text-muted font-medium uppercase tracking-widest mt-0.5">
-                Every Second Counts. Find a Donor Now.
+                Emergency Blood Network. Every Second Counts.
               </p>
             </div>
           </div>
@@ -789,24 +804,44 @@ export default function App() {
             </div>
           </div>
 
-          {/* Profile User Status & Notification Center */}
-          {currentUser && (
-            <div className="flex items-center gap-3 relative">
-              
-              {/* Notification Center Trigger Bell button */}
-              <div className="relative">
-                <button
-                  id="header-notification-bell"
-                  onClick={() => setShowNotificationCenter(!showNotificationCenter)}
-                  className="p-2.5 bg-surface-dark border border-border-dark rounded-xl hover:bg-zinc-800 text-text-subtle hover:text-white transition cursor-pointer relative"
-                >
-                  <Bell className="w-5 h-5 animate-pulse" />
-                  {notifications.filter((n) => !n.read).length > 0 && (
-                    <span className="absolute -top-1 -right-1 bg-brand-red text-white text-[10px] w-5 h-5 rounded-full flex items-center justify-center font-black border-2 border-card-dark">
-                      {notifications.filter((n) => !n.read).length}
-                    </span>
-                  )}
-                </button>
+          {/* Controls: Theme Toggle & Notification Center & User Status */}
+          <div className="flex items-center gap-3 relative shrink-0">
+            {/* Theme Toggle Button */}
+            <button
+              id="theme-toggle-btn"
+              onClick={() => setIsDarkMode(!isDarkMode)}
+              title={isDarkMode ? "Switch to Light Mode" : "Switch to Dark Mode"}
+              className="p-2.5 bg-surface-dark border border-border-dark rounded-xl hover:bg-surface-dark/80 text-text-bright transition cursor-pointer flex items-center gap-2"
+            >
+              {isDarkMode ? (
+                <>
+                  <Sun className="w-4 h-4 text-amber-400 animate-spin-slow" />
+                  <span className="hidden sm:inline text-xs font-semibold text-text-bright">Light Mode</span>
+                </>
+              ) : (
+                <>
+                  <Moon className="w-4 h-4 text-indigo-400" />
+                  <span className="hidden sm:inline text-xs font-semibold text-text-bright">Dark Mode</span>
+                </>
+              )}
+            </button>
+
+            {currentUser && (
+              <>
+                {/* Notification Center Trigger Bell button */}
+                <div className="relative">
+                  <button
+                    id="header-notification-bell"
+                    onClick={() => setShowNotificationCenter(!showNotificationCenter)}
+                    className="p-2.5 bg-surface-dark border border-border-dark rounded-xl hover:bg-zinc-800 text-text-subtle hover:text-white transition cursor-pointer relative"
+                  >
+                    <Bell className="w-5 h-5 animate-pulse" />
+                    {notifications.filter((n) => !n.read).length > 0 && (
+                      <span className="absolute -top-1 -right-1 bg-brand-red text-white text-[10px] w-5 h-5 rounded-full flex items-center justify-center font-black border-2 border-card-dark">
+                        {notifications.filter((n) => !n.read).length}
+                      </span>
+                    )}
+                  </button>
 
                 {/* Dropdown UI */}
                 {showNotificationCenter && (
@@ -877,8 +912,9 @@ export default function App() {
                   {currentUser.fullName ? currentUser.fullName[0].toUpperCase() : "U"}
                 </div>
               </div>
-            </div>
+            </>
           )}
+        </div>
         </div>
       </header>
 
@@ -2183,6 +2219,41 @@ export default function App() {
               </div>
             </div>
 
+            {/* SHOW ONLY FOR SUPER ADMIN: ADMIN PERSON DETAILS BOX */}
+            {currentUser?.role === "admin" && (
+              <div id="super-admin-details-box" className="bg-gradient-to-r from-amber-950/40 via-card-dark to-amber-950/20 border-2 border-amber-500/40 rounded-2xl p-5 sm:p-6 shadow-2xl relative overflow-hidden">
+                <div className="absolute -right-6 -bottom-6 w-32 h-32 bg-amber-500/10 rounded-full blur-2xl pointer-events-none"></div>
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 relative z-10">
+                  <div className="flex items-center gap-4">
+                    <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-amber-500 to-amber-700 flex items-center justify-center shadow-lg shadow-amber-500/30 text-white font-black text-xl shrink-0">
+                      <Shield className="w-8 h-8 fill-white/20 text-white" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="bg-amber-500/20 border border-amber-500/40 text-amber-400 font-mono text-[10px] px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider">
+                          SUPER ADMIN SECURITY CLEARANCE
+                        </span>
+                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                      </div>
+                      <h3 className="text-xl font-extrabold text-text-bright font-display mt-1">
+                        {currentUser.fullName || "Super Admin Srini"}
+                      </h3>
+                      <p className="text-xs text-text-muted flex items-center gap-1.5 mt-0.5 font-mono">
+                        <Mail className="w-3.5 h-3.5 text-amber-400" />
+                        <span>{currentUser.email || "admin@bloodfinder.org"}</span>
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="bg-surface-dark/90 border border-amber-500/30 px-4 py-3 rounded-xl text-xs space-y-1 sm:text-right shrink-0">
+                    <p className="text-text-subtle font-mono text-[10px] uppercase">Account UID & Role</p>
+                    <p className="font-mono text-amber-400 font-bold text-xs">{currentUser.uid} ({currentUser.role})</p>
+                    <p className="text-[10px] text-emerald-400 font-semibold">✓ Registered User Account Removal Access Active</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Donor moderation list */}
             <div className="bg-card-dark border border-border-dark rounded-2xl p-5 shadow-xl space-y-4">
               <h3 className="text-sm font-bold font-display text-text-bright uppercase tracking-wider text-[11px] border-b border-border-dark pb-2">Active Donor Records Modernization</h3>
@@ -2236,34 +2307,65 @@ export default function App() {
               
               {/* Users table */}
               <div className="bg-card-dark border border-border-dark p-5 rounded-2xl shadow-xl space-y-3">
-                <h4 className="text-xs font-bold font-display text-text-bright uppercase tracking-wider text-[11px]">System Accounts Registrations</h4>
-                <div className="max-h-[220px] overflow-y-auto">
+                <div className="flex items-center justify-between border-b border-border-dark pb-2">
+                  <h4 className="text-xs font-bold font-display text-text-bright uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+                    <User className="w-4 h-4 text-amber-500" />
+                    <span>Registered User Accounts ({allUsers.length})</span>
+                  </h4>
+                  <span className="text-[9px] bg-amber-500/15 text-amber-400 border border-amber-500/30 px-2 py-0.5 rounded font-mono font-bold">
+                    Super Admin Access
+                  </span>
+                </div>
+
+                <div className="max-h-[260px] overflow-y-auto">
                   <table className="w-full text-xs text-left">
                     <thead>
-                      <tr className="border-b border-zinc-800 text-text-subtle font-mono text-[9px]">
-                        <th className="py-2">Name</th>
-                        <th className="py-2">Role</th>
-                        <th className="text-right py-2">Action</th>
+                      <tr className="border-b border-border-dark/80 text-text-subtle font-mono text-[9px] uppercase">
+                        <th className="py-2 px-1">User Name</th>
+                        <th className="py-2 px-1">Email ID</th>
+                        <th className="py-2 px-1">Role</th>
+                        <th className="text-right py-2 px-1">Action</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {allUsers.map((u) => (
-                        <tr key={u.uid} id={`admin-user-row-${u.uid}`} className="border-b border-zinc-900 text-text-bright hover:bg-surface-dark/20">
-                          <td className="py-2 font-medium">{u.fullName}</td>
-                          <td className="py-2 text-text-subtle font-mono text-[10px]">{u.role}</td>
-                          <td className="text-right py-2">
-                            {u.role !== "admin" && (
-                              <button
-                                id={`admin-delete-user-${u.uid}`}
-                                onClick={() => store.deleteUser(u.uid)}
-                                className="text-red-500 hover:text-white p-1 text-[10px]"
-                              >
-                                Delete
-                              </button>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
+                      {allUsers.map((u) => {
+                        const isSelf = currentUser?.uid === u.uid;
+                        return (
+                          <tr key={u.uid} id={`admin-user-row-${u.uid}`} className="border-b border-border-dark/40 text-text-bright hover:bg-surface-dark/30">
+                            <td className="py-2 px-1">
+                              <span className="font-semibold block leading-tight">{u.fullName}</span>
+                              <span className="text-[9px] text-text-subtle font-mono">{u.uid}</span>
+                            </td>
+                            <td className="py-2 px-1 text-text-muted font-mono text-[10px]">{u.email}</td>
+                            <td className="py-2 px-1">
+                              <span className={`px-1.5 py-0.5 rounded text-[9px] font-mono font-bold ${
+                                u.role === "admin"
+                                  ? "bg-amber-500/15 text-amber-400 border border-amber-500/30"
+                                  : "bg-blue-500/15 text-blue-400 border border-blue-500/30"
+                              }`}>
+                                {u.role === "admin" ? "Admin" : "User"}
+                              </span>
+                            </td>
+                            <td className="text-right py-2 px-1">
+                              {isSelf ? (
+                                <span className="text-[9px] text-zinc-500 font-mono italic">Self</span>
+                              ) : (
+                                <button
+                                  id={`admin-delete-user-${u.uid}`}
+                                  onClick={() => {
+                                    if (confirm(`Are you sure you want to permanently remove registered user account "${u.fullName}" (${u.email})?`)) {
+                                      store.deleteUser(u.uid);
+                                    }
+                                  }}
+                                  className="text-red-500 hover:text-white bg-red-500/10 hover:bg-red-600 border border-red-500/30 px-2 py-0.5 rounded text-[10px] font-bold transition cursor-pointer"
+                                >
+                                  Remove
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -2387,7 +2489,7 @@ export default function App() {
       {/* Human Footers info details */}
       <footer className="border-t border-border-dark bg-[#080808] py-4 text-center text-[10px] text-text-subtle">
         <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <p>© 2026 Emergency Blood Donor Finder. Crafted with precision for life preservation.</p>
+          <p>© 2026 HEMOLINK. Emergency Blood Network. Crafted with precision for life preservation.</p>
           <p className="font-mono">Server node status: ONLINE (Port 3000) • ISO UTC Coordinates: 2026-06-04 14:11Z</p>
         </div>
       </footer>

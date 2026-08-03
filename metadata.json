@@ -1,6 +1,6 @@
 {
-  "name": "Emergency Blood Donor Finder",
-  "description": "Every Second Counts. Find compatible near-by blood donors instantly during emergencies with interactive mapping and private chat.",
+  "name": "HEMOLINK",
+  "description": "HEMOLINK - Emergency Blood Network. Connect with nearby blood donors instantly during medical emergencies.",
   "requestFramePermissions": [
     "geolocation"
   ],
