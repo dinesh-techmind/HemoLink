@@ -4,6 +4,7 @@ import { Donor, EmergencyRequest, Chat, Message, AppUser, BloodGroup, UrgencyLev
 import MapContainer from "./components/MapContainer";
 import SandboxSelector from "./components/SandboxSelector";
 import DonorGraphicalTimeline from "./components/DonorGraphicalTimeline";
+import DonorIdentityPassModal from "./components/DonorIdentityPassModal";
 import {
   Droplet,
   MapPin,
@@ -15,6 +16,7 @@ import {
   ArrowRight,
   Share2,
   CheckCircle,
+  CheckCircle2,
   Check,
   Shield,
   Calendar,
@@ -30,7 +32,10 @@ import {
   Bell,
   Mail,
   Sun,
-  Moon
+  Moon,
+  Award,
+  QrCode,
+  Printer
 } from "lucide-react";
 
 // List of standard blood groups
@@ -81,6 +86,57 @@ export default function App() {
       localStorage.setItem("hemolink_theme", "light");
     }
   }, [isDarkMode]);
+
+  // Selected donor for Pass generation modal
+  const [selectedPassDonor, setSelectedPassDonor] = useState<Donor | null>(null);
+
+  // Helper for admin to calculate next donation eligibility
+  const getNextDonationSchedule = (lastDonationDateStr?: string) => {
+    if (!lastDonationDateStr || lastDonationDateStr === "Never Logged" || lastDonationDateStr === "Never") {
+      return {
+        lastDonatedFormatted: "No prior donation logged",
+        nextDateFormatted: "Eligible to Donate Now",
+        daysLeft: 0,
+        isEligible: true
+      };
+    }
+
+    const lastDate = new Date(lastDonationDateStr);
+    if (isNaN(lastDate.getTime())) {
+      return {
+        lastDonatedFormatted: lastDonationDateStr,
+        nextDateFormatted: "Eligible to Donate Now",
+        daysLeft: 0,
+        isEligible: true
+      };
+    }
+
+    const COOLDOWN_DAYS = 56;
+    const nextDate = new Date(lastDate.getTime() + COOLDOWN_DAYS * 24 * 60 * 60 * 1000);
+    const now = new Date();
+    const diffMs = nextDate.getTime() - now.getTime();
+    const daysLeft = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+
+    const options: Intl.DateTimeFormatOptions = { month: "short", day: "numeric", year: "numeric" };
+    const lastDonatedFormatted = lastDate.toLocaleDateString("en-US", options);
+    const nextDateFormatted = nextDate.toLocaleDateString("en-US", options);
+
+    if (daysLeft > 0) {
+      return {
+        lastDonatedFormatted,
+        nextDateFormatted,
+        daysLeft,
+        isEligible: false
+      };
+    } else {
+      return {
+        lastDonatedFormatted,
+        nextDateFormatted: "Cleared to Donate Now",
+        daysLeft: 0,
+        isEligible: true
+      };
+    }
+  };
 
   // Filter & Search states
   const [searchBlood, setSearchBlood] = useState<string>("All");
@@ -519,7 +575,7 @@ export default function App() {
                 HEMOLINK
               </h1>
               <p className="text-[10px] text-text-muted font-bold uppercase tracking-widest mt-0.5">
-                Emergency Blood Network Gateway
+                Connecting donors. Saving Lifes.
               </p>
             </div>
           </div>
@@ -776,7 +832,7 @@ export default function App() {
                 HEMOLINK
               </h1>
               <p className="text-[10px] text-text-muted font-medium uppercase tracking-widest mt-0.5">
-                Emergency Blood Network. Every Second Counts.
+                Connecting donors. Saving Lifes.
               </p>
             </div>
           </div>
@@ -1686,6 +1742,17 @@ export default function App() {
                         </div>
                       </div>
 
+                      {myProfile && (
+                        <button
+                          id="profile-donor-pass-btn"
+                          onClick={() => setSelectedPassDonor(myProfile)}
+                          className="w-full mt-2 flex items-center justify-center gap-2 bg-gradient-to-r from-brand-red to-rose-700 hover:from-brand-red-dark hover:to-rose-800 text-white font-extrabold py-2.5 rounded-xl text-xs cursor-pointer transition shadow-lg shadow-brand-red/30 uppercase tracking-wide"
+                        >
+                          <Award className="w-4 h-4 text-white" />
+                          <span>Generate Donor Identity Pass</span>
+                        </button>
+                      )}
+
                       {currentUser?.uid !== "admin_super" && (
                         <button
                           id="profile-msg-admin-btn"
@@ -1773,6 +1840,34 @@ export default function App() {
                             {myProfile.isAvailable ? "Ready to Donate" : "Away / Cooldown"}
                           </button>
                         </div>
+                      </div>
+
+                      {/* Digital Donor Pass Badge Card Banner */}
+                      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-gradient-to-r from-brand-red/15 via-surface-dark to-brand-red/10 border border-brand-red/40 p-4 rounded-2xl shadow-lg">
+                        <div className="flex items-center gap-3">
+                          <div className="w-11 h-11 rounded-2xl bg-brand-red flex items-center justify-center text-white font-black shrink-0 shadow-md shadow-brand-red/30">
+                            <QrCode className="w-6 h-6 text-white" />
+                          </div>
+                          <div>
+                            <h4 className="font-extrabold text-sm text-text-bright font-display flex items-center gap-2">
+                              <span>Official Digital Donor Identity Pass</span>
+                              <span className="bg-brand-red/20 text-brand-red border border-brand-red/30 text-[9px] font-mono px-2 py-0.5 rounded-full font-bold uppercase">
+                                QR Verified
+                              </span>
+                            </h4>
+                            <p className="text-[11px] text-text-muted mt-0.5">
+                              Generate a printable or downloadable pass with your blood group and unique scannable QR code for rapid hospital verification.
+                            </p>
+                          </div>
+                        </div>
+                        <button
+                          id="view-my-pass-banner-btn"
+                          onClick={() => setSelectedPassDonor(myProfile)}
+                          className="w-full sm:w-auto px-5 py-2.5 bg-brand-red hover:bg-brand-red-dark text-white rounded-xl text-xs font-extrabold transition cursor-pointer flex items-center justify-center gap-2 shadow-lg shadow-brand-red/30 uppercase tracking-wide shrink-0"
+                        >
+                          <Award className="w-4 h-4" />
+                          <span>Generate Pass</span>
+                        </button>
                       </div>
 
                       {/* Donor stats info card */}
@@ -2221,9 +2316,9 @@ export default function App() {
 
             {/* SHOW ONLY FOR SUPER ADMIN: ADMIN PERSON DETAILS BOX */}
             {currentUser?.role === "admin" && (
-              <div id="super-admin-details-box" className="bg-gradient-to-r from-amber-950/40 via-card-dark to-amber-950/20 border-2 border-amber-500/40 rounded-2xl p-5 sm:p-6 shadow-2xl relative overflow-hidden">
+              <div id="super-admin-details-box" className="bg-gradient-to-r from-amber-950/40 via-card-dark to-amber-950/20 border-2 border-amber-500/40 rounded-2xl p-5 sm:p-6 shadow-2xl relative overflow-hidden space-y-6">
                 <div className="absolute -right-6 -bottom-6 w-32 h-32 bg-amber-500/10 rounded-full blur-2xl pointer-events-none"></div>
-                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 relative z-10">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 relative z-10 border-b border-amber-500/20 pb-5">
                   <div className="flex items-center gap-4">
                     <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-amber-500 to-amber-700 flex items-center justify-center shadow-lg shadow-amber-500/30 text-white font-black text-xl shrink-0">
                       <Shield className="w-8 h-8 fill-white/20 text-white" />
@@ -2249,6 +2344,95 @@ export default function App() {
                     <p className="text-text-subtle font-mono text-[10px] uppercase">Account UID & Role</p>
                     <p className="font-mono text-amber-400 font-bold text-xs">{currentUser.uid} ({currentUser.role})</p>
                     <p className="text-[10px] text-emerald-400 font-semibold">✓ Registered User Account Removal Access Active</p>
+                  </div>
+                </div>
+
+                {/* RECENT BLOOD DONORS & NEXT ELIGIBILITY SCHEDULE */}
+                <div className="relative z-10 space-y-3">
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+                    <div>
+                      <h4 className="text-xs font-extrabold font-display text-amber-400 uppercase tracking-wider flex items-center gap-2">
+                        <Droplet className="w-4 h-4 text-brand-red fill-brand-red" />
+                        <span>Recent Blood Donors & Next Donation Eligibility Schedule</span>
+                      </h4>
+                      <p className="text-[10px] text-text-muted mt-0.5">
+                        Tracks donors who donated blood recently and calculates their next eligible donation date based on 56-day WHO guidelines.
+                      </p>
+                    </div>
+                    <span className="text-[10px] bg-amber-500/10 border border-amber-500/30 text-amber-400 font-mono px-2.5 py-1 rounded-full font-bold uppercase shrink-0">
+                      WHO 56-Day Cooldown Matrix
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-[380px] overflow-y-auto pr-1">
+                    {donors
+                      .slice()
+                      .sort((a, b) => {
+                        const dateA = a.lastDonationDate ? new Date(a.lastDonationDate).getTime() : 0;
+                        const dateB = b.lastDonationDate ? new Date(b.lastDonationDate).getTime() : 0;
+                        return dateB - dateA;
+                      })
+                      .map((d) => {
+                        const sched = getNextDonationSchedule(d.lastDonationDate);
+                        return (
+                          <div
+                            key={`recent-donor-${d.uid}`}
+                            id={`admin-recent-donor-${d.uid}`}
+                            className="bg-surface-dark/90 border border-border-dark hover:border-amber-500/40 p-3.5 rounded-xl space-y-2.5 transition"
+                          >
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2.5">
+                                <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-brand-red to-rose-900 text-white font-extrabold flex items-center justify-center text-xs font-display shrink-0 shadow-md">
+                                  {d.bloodGroup}
+                                </div>
+                                <div>
+                                  <h5 className="text-xs font-extrabold text-text-bright leading-tight">
+                                    {d.fullName}
+                                  </h5>
+                                  <p className="text-[10px] text-text-muted font-mono">{d.city}, {d.state} • {d.phone || "No phone"}</p>
+                                </div>
+                              </div>
+                              <span className="text-[10px] font-mono font-bold bg-zinc-800 text-zinc-300 px-2 py-0.5 rounded-full border border-zinc-700 shrink-0">
+                                {d.donationCount} Units
+                              </span>
+                            </div>
+
+                            <div className="bg-card-dark/90 p-2.5 rounded-lg border border-border-dark/60 grid grid-cols-2 gap-2 text-[11px]">
+                              <div>
+                                <span className="text-[9px] text-text-subtle uppercase font-mono font-semibold block">Last Donated</span>
+                                <span className="font-semibold text-text-bright font-mono text-[10px]">{sched.lastDonatedFormatted}</span>
+                              </div>
+
+                              <div>
+                                <span className="text-[9px] text-text-subtle uppercase font-mono font-semibold block">Next Donation Window</span>
+                                {sched.isEligible ? (
+                                  <span className="font-bold text-emerald-400 font-mono text-[10px] flex items-center gap-1">
+                                    <CheckCircle2 className="w-3 h-3" />
+                                    Cleared to Donate
+                                  </span>
+                                ) : (
+                                  <span className="font-extrabold text-amber-400 font-mono text-[10px] block">
+                                    {sched.nextDateFormatted}
+                                    <span className="text-[9px] text-amber-500/90 font-mono font-semibold block">({sched.daysLeft} days left)</span>
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="flex items-center justify-between text-[10px] pt-0.5">
+                              <span className="text-text-subtle font-mono truncate">Email: {d.email || "Verified User"}</span>
+                              <button
+                                id={`admin-donor-pass-link-${d.uid}`}
+                                onClick={() => setSelectedPassDonor(d)}
+                                className="text-amber-400 hover:text-white font-bold font-mono underline cursor-pointer flex items-center gap-1 shrink-0 ml-2"
+                              >
+                                <Award className="w-3 h-3" />
+                                <span>View Donor Pass</span>
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
                   </div>
                 </div>
               </div>
@@ -2486,10 +2670,19 @@ export default function App() {
         onSwitchUser={(uid) => store.switchUser(uid)}
       />
 
+      {/* Donor Identity Pass Modal */}
+      {selectedPassDonor && (
+        <DonorIdentityPassModal
+          donor={selectedPassDonor}
+          user={currentUser}
+          onClose={() => setSelectedPassDonor(null)}
+        />
+      )}
+
       {/* Human Footers info details */}
       <footer className="border-t border-border-dark bg-[#080808] py-4 text-center text-[10px] text-text-subtle">
         <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <p>© 2026 HEMOLINK. Emergency Blood Network. Crafted with precision for life preservation.</p>
+          <p>© 2026 HEMOLINK • Connecting donors. Saving Lifes. Crafted with precision for life preservation.</p>
           <p className="font-mono">Server node status: ONLINE (Port 3000) • ISO UTC Coordinates: 2026-06-04 14:11Z</p>
         </div>
       </footer>
