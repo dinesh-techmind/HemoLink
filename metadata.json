@@ -1,0 +1,10 @@
+{
+  "name": "Emergency Blood Donor Finder",
+  "description": "Every Second Counts. Find compatible near-by blood donors instantly during emergencies with interactive mapping and private chat.",
+  "requestFramePermissions": [
+    "geolocation"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

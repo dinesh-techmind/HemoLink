@@ -1,0 +1,79 @@
+{
+  "entities": {
+    "Donor": {
+      "title": "Donor",
+      "description": "Represents an active human blood donor registered under the emergency network.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Owner Auth uid key" },
+        "fullName": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "phone": { "type": "string" },
+        "age": { "type": "integer" },
+        "gender": { "type": "string", "enum": ["Male", "Female", "Other"] },
+        "bloodGroup": { "type": "string", "enum": ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"] },
+        "city": { "type": "string" },
+        "state": { "type": "string" },
+        "pincode": { "type": "string" },
+        "isAvailable": { "type": "boolean" },
+        "lastDonationDate": { "type": "string", "format": "date" },
+        "donationCount": { "type": "integer" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "fullName", "email", "phone", "age", "gender", "bloodGroup", "city", "state", "pincode", "isAvailable"]
+    },
+    "EmergencyRequest": {
+      "title": "EmergencyRequest",
+      "description": "Represent an active crisis SOS requisition submitted by medical staff or family.",
+      "type": "object",
+      "properties": {
+        "requestId": { "type": "string" },
+        "createdBy": { "type": "string" },
+        "patientName": { "type": "string" },
+        "bloodGroupNeeded": { "type": "string" },
+        "unitsNeeded": { "type": "integer" },
+        "hospitalName": { "type": "string" },
+        "hospitalAddress": { "type": "string" },
+        "city": { "type": "string" },
+        "state": { "type": "string" },
+        "urgencyLevel": { "type": "string", "enum": ["Critical", "Urgent", "Normal"] },
+        "additionalNotes": { "type": "string" },
+        "status": { "type": "string", "enum": ["Active", "Fulfilled", "Expired"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "expiresAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["requestId", "createdBy", "patientName", "bloodGroupNeeded", "unitsNeeded", "hospitalName", "city", "state", "urgencyLevel", "status"]
+    },
+    "AppNotification": {
+      "title": "AppNotification",
+      "description": "Represents an active SMS/Email or In-App dispatch signal logged in real-time.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "message": { "type": "string" },
+        "type": { "type": "string", "enum": ["SMS", "Email", "In-App"] },
+        "recipient": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "read": { "type": "boolean" },
+        "requestId": { "type": "string" }
+      },
+      "required": ["id", "title", "message", "type", "timestamp", "read"]
+    }
+  },
+  "firestore": {
+    "/donors/{uid}": {
+      "schema": { "$ref": "#/entities/Donor" },
+      "description": "Primary user profiles indexing physical geolocations of volunteers."
+    },
+    "/emergency_requests/{requestId}": {
+      "schema": { "$ref": "#/entities/EmergencyRequest" },
+      "description": "Central crisis alert documents."
+    },
+    "/notifications/{notificationId}": {
+      "schema": { "$ref": "#/entities/AppNotification" },
+      "description": "SMS and Email dispatch log tracks synced dynamically to the database."
+    }
+  }
+}

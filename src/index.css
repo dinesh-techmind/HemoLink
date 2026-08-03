@@ -1,0 +1,84 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "DM Sans", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-display: "Syne", sans-serif;
+
+  --color-brand-red: #E63946;
+  --color-brand-red-dark: #C1121F;
+  --color-base-dark: #0D0D0D;
+  --color-card-dark: #161616;
+  --color-surface-dark: #1E1E1E;
+  --color-border-dark: #2A2A2A;
+
+  --color-text-bright: #F5F5F5;
+  --color-text-muted: #A0A0A0;
+  --color-text-subtle: #5C5C5C;
+
+  /* Blood Group badging */
+  --color-ap: #FF6B6B;
+  --color-an: #FF8E8E;
+  --color-bp: #4ECDC4;
+  --color-bn: #6EE7E0;
+  --color-abp: #A855F7;
+  --color-abn: #C084FC;
+  --color-op: #F59E0B;
+  --color-on: #FCD34D;
+}
+
+@keyframes pulse-critical {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(230, 57, 70, 0.5);
+  }
+  50% {
+    box-shadow: 0 0 0 10px rgba(230, 57, 70, 0);
+  }
+}
+
+.animate-pulse-critical {
+  animation: pulse-critical 2s infinite;
+}
+
+/* Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #0D0D0D;
+}
+::-webkit-scrollbar-thumb {
+  background: #2A2A2A;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #3E3E3E;
+}
+
+/* Leaflet dark styling */
+.leaflet-container {
+  background: #111111 !important;
+  font-family: inherit;
+}
+.leaflet-bar {
+  border: 1px solid #2A2A2A !important;
+  box-shadow: none !important;
+}
+.leaflet-bar a {
+  background-color: #161616 !important;
+  color: #F5F5F5 !important;
+  border-bottom: 1px solid #2A2A2A !important;
+}
+.leaflet-bar a:hover {
+  background-color: #1E1E1E !important;
+  color: #FFFFFF !important;
+}
+.leaflet-popup-content-wrapper {
+  background: #161616 !important;
+  color: #F5F5F5 !important;
+  border: 1px solid #2A2A2A;
+  border-radius: 12px !important;
+}
+.leaflet-popup-tip {
+  background: #161616 !important;
+  border: 1px solid #2A2A2A;
+}

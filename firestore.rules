@@ -1,0 +1,96 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Catch-All Global Security Gate
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Reusable global secure utility primitives
+    function isSignedIn() { 
+      return request.auth != null; 
+    }
+    
+    function isValidId(id) { 
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); 
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function isValidDonor(data) {
+      return data != null 
+        && (!('uid' in data) || (data.uid is string && data.uid.size() <= 128))
+        && data.fullName is string && data.fullName.size() <= 128
+        && data.email is string && data.email.size() <= 128
+        && data.phone is string && data.phone.size() <= 32
+        && data.city is string && data.city.size() <= 128
+        && data.state is string && data.state.size() <= 128
+        && data.isAvailable is bool;
+    }
+
+    function isValidEmergencyRequest(data) {
+      return data != null 
+        && (!('requestId' in data) || (data.requestId is string && data.requestId.size() <= 128))
+        && data.createdBy is string && data.createdBy.size() <= 128
+        && data.patientName is string && data.patientName.size() <= 128
+        && data.bloodGroupNeeded is string && data.bloodGroupNeeded.size() <= 8
+        && data.unitsNeeded is int
+        && data.hospitalName is string && data.hospitalName.size() <= 256
+        && data.city is string && data.city.size() <= 128
+        && data.state is string && data.state.size() <= 128
+        && data.urgencyLevel is string && data.urgencyLevel.size() <= 16
+        && data.status is string && data.status.size() <= 16;
+    }
+
+    function isValidNotification(data) {
+      return data != null
+        && (!('id' in data) || (data.id is string && data.id.size() <= 128))
+        && data.title is string && data.title.size() <= 128
+        && data.message is string && data.message.size() <= 500
+        && data.type is string && data.type.size() <= 16
+        && data.timestamp is string && data.timestamp.size() <= 64;
+    }
+
+    // Donors collection: Public readers, robust validation-checked writers
+    match /donors/{donorId} {
+      allow read: if true;
+      allow create, update: if isValidId(donorId) && isValidDonor(incoming());
+      allow delete: if true;
+    }
+
+    // Emergency requests: Anyone can read and write with proper schema validation
+    match /emergency_requests/{requestId} {
+      allow read: if true;
+      allow create, update: if isValidId(requestId) && isValidEmergencyRequest(incoming());
+      allow delete: if true;
+    }
+
+    // Notifications collection: Public access for robust notification dispatch logging
+    match /notifications/{notificationId} {
+      allow get, list: if true;
+      allow create, update: if isValidId(notificationId) && isValidNotification(incoming());
+      allow delete: if true;
+    }
+
+    // Chat nodes: Public reads and writes for seamless sandbox-persona switching mapping
+    match /chats/{chatId} {
+      allow read: if true;
+      allow create, update: if isValidId(chatId);
+      allow delete: if true;
+    }
+
+    // Nested messages collection path
+    match /chats/{chatId}/messages/{messageId} {
+      allow read, write: if isValidId(messageId);
+    }
+
+    // Administrative access authorization matching table lookup
+    match /admins/{adminId} {
+      allow read: if true;
+      allow write: if false;
+    }
+  }
+}
