@@ -5,6 +5,7 @@ import MapContainer from "./components/MapContainer";
 import SandboxSelector from "./components/SandboxSelector";
 import DonorGraphicalTimeline from "./components/DonorGraphicalTimeline";
 import DonorIdentityPassModal from "./components/DonorIdentityPassModal";
+import GoogleMapsFinder from "./components/GoogleMapsFinder";
 import {
   Droplet,
   MapPin,
@@ -35,7 +36,9 @@ import {
   Moon,
   Award,
   QrCode,
-  Printer
+  Printer,
+  Compass,
+  Clock
 } from "lucide-react";
 
 // List of standard blood groups
@@ -72,7 +75,7 @@ export default function App() {
   const [donors, setDonors] = useState<Donor[]>(store.getDonors());
   const [emergencies, setEmergencies] = useState<EmergencyRequest[]>(store.getEmergencies());
   const [chats, setChats] = useState<Chat[]>(store.getChats());
-  const [activeTab, setActiveTab] = useState<"search" | "emergency" | "profile" | "chats" | "admin">("search");
+  const [activeTab, setActiveTab] = useState<"search" | "emergency" | "maps" | "profile" | "chats" | "admin">("search");
 
   // Dark & Light Theme Mode State
   const [isDarkMode, setIsDarkMode] = useState<boolean>(() => localStorage.getItem("hemolink_theme") !== "light");
@@ -144,6 +147,9 @@ export default function App() {
   const [searchRadius, setSearchRadius] = useState<number>(25); // Default 25 km radius
   const [sortBy, setSortBy] = useState<"distance" | "name" | "available">("distance");
   const [mapToggle, setMapToggle] = useState<boolean>(true);
+
+  // Admin Console filter state
+  const [adminRecentDonorSearch, setAdminRecentDonorSearch] = useState<string>("");
 
   // Modal Emergency Request form fields state
   const [isEmergencyModalOpen, setIsEmergencyModalOpen] = useState<boolean>(false);
@@ -257,8 +263,10 @@ export default function App() {
 
     const localMatch = matchCityCoordinates(searchCity);
     if (localMatch) {
-      store.setGPSLocation(localMatch);
-      setUserGPS(localMatch);
+      if (userGPS.lat !== localMatch.lat || userGPS.lng !== localMatch.lng) {
+        store.setGPSLocation(localMatch);
+        setUserGPS(localMatch);
+      }
       return;
     }
 
@@ -272,8 +280,10 @@ export default function App() {
           const lat = parseFloat(data[0].lat);
           const lng = parseFloat(data[0].lon);
           const resolvedLoc = { lat, lng };
-          store.setGPSLocation(resolvedLoc);
-          setUserGPS(resolvedLoc);
+          if (userGPS.lat !== resolvedLoc.lat || userGPS.lng !== resolvedLoc.lng) {
+            store.setGPSLocation(resolvedLoc);
+            setUserGPS(resolvedLoc);
+          }
         }
       } catch (err) {
         console.error("Geocoding API lookup failed", err);
@@ -281,7 +291,7 @@ export default function App() {
     }, 600);
 
     return () => clearTimeout(delayTimer);
-  }, [searchCity, donors, emergencies]);
+  }, [searchCity, userGPS.lat, userGPS.lng]);
 
   // Compute filtered donors list based on directory searches
   const computedDonors = useMemo(() => {
@@ -1006,6 +1016,18 @@ export default function App() {
               )}
             </button>
             <button
+              id="tab-btn-maps"
+              onClick={() => setActiveTab("maps")}
+              className={`flex items-center gap-2 px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition duration-150 cursor-pointer shrink-0 ${
+                activeTab === "maps"
+                  ? "bg-brand-red text-white shadow-xl shadow-brand-red/10"
+                  : "text-text-muted hover:text-text-bright hover:bg-surface-dark"
+              }`}
+            >
+              <Compass className="w-4 h-4 text-emerald-400" />
+              <span>Blood Banks (Google Maps)</span>
+            </button>
+            <button
               id="tab-btn-profile"
               onClick={() => setActiveTab("profile")}
               className={`flex items-center gap-2 px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition duration-150 cursor-pointer shrink-0 ${
@@ -1697,6 +1719,11 @@ export default function App() {
           </div>
         )}
 
+        {/* VIEW 2.5: GOOGLE MAPS LIVE DIRECTORY */}
+        {activeTab === "maps" && (
+          <GoogleMapsFinder userLat={userGPS.lat} userLng={userGPS.lng} />
+        )}
+
         {/* VIEW 3: PROFILE / DASHBOARD BECOME A DONOR */}
         {activeTab === "profile" && (
           <div className="space-y-6">
@@ -2364,76 +2391,146 @@ export default function App() {
                     </span>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-[380px] overflow-y-auto pr-1">
-                    {donors
-                      .slice()
+                  {/* Search Bar for Filtering Recent Donors by Name, Blood Group, or City */}
+                  <div className="relative flex items-center">
+                    <Search className="w-4 h-4 text-amber-400 absolute left-3 pointer-events-none" />
+                    <input
+                      type="text"
+                      id="admin-recent-donor-search"
+                      value={adminRecentDonorSearch}
+                      onChange={(e) => setAdminRecentDonorSearch(e.target.value)}
+                      placeholder="Search recent donors by name, blood group (e.g. O+, A-), or city..."
+                      className="w-full bg-card-dark/90 border border-amber-500/30 focus:border-amber-400 rounded-xl pl-9 pr-24 py-2 text-xs text-text-bright placeholder-text-subtle focus:outline-none transition shadow-inner font-sans"
+                    />
+                    {adminRecentDonorSearch ? (
+                      <button
+                        onClick={() => setAdminRecentDonorSearch("")}
+                        className="absolute right-3 text-xs text-amber-400 hover:text-white font-mono font-bold flex items-center gap-1 cursor-pointer bg-amber-500/10 hover:bg-amber-500/20 px-2 py-0.5 rounded transition"
+                      >
+                        <X className="w-3 h-3" />
+                        <span>Clear</span>
+                      </button>
+                    ) : (
+                      <span className="absolute right-3 text-[10px] text-text-subtle font-mono hidden sm:inline">
+                        Name / Blood / City
+                      </span>
+                    )}
+                  </div>
+
+                  {(() => {
+                    const filteredDonors = donors
+                      .filter((d) => {
+                        if (!adminRecentDonorSearch.trim()) return true;
+                        const q = adminRecentDonorSearch.toLowerCase().trim();
+                        return (
+                          d.fullName?.toLowerCase().includes(q) ||
+                          d.bloodGroup?.toLowerCase().includes(q) ||
+                          d.city?.toLowerCase().includes(q) ||
+                          d.state?.toLowerCase().includes(q)
+                        );
+                      })
                       .sort((a, b) => {
                         const dateA = a.lastDonationDate ? new Date(a.lastDonationDate).getTime() : 0;
                         const dateB = b.lastDonationDate ? new Date(b.lastDonationDate).getTime() : 0;
                         return dateB - dateA;
-                      })
-                      .map((d) => {
-                        const sched = getNextDonationSchedule(d.lastDonationDate);
-                        return (
-                          <div
-                            key={`recent-donor-${d.uid}`}
-                            id={`admin-recent-donor-${d.uid}`}
-                            className="bg-surface-dark/90 border border-border-dark hover:border-amber-500/40 p-3.5 rounded-xl space-y-2.5 transition"
+                      });
+
+                    if (filteredDonors.length === 0) {
+                      return (
+                        <div className="bg-surface-dark/60 border border-border-dark p-6 rounded-xl text-center space-y-1">
+                          <p className="text-xs text-amber-400 font-bold">No donors found matching "{adminRecentDonorSearch}"</p>
+                          <p className="text-[10px] text-text-subtle">Try searching by full name, blood group (e.g. O+, B+), or city name.</p>
+                          <button
+                            onClick={() => setAdminRecentDonorSearch("")}
+                            className="mt-2 text-[10px] text-brand-red hover:text-white underline cursor-pointer font-bold font-mono"
                           >
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-2.5">
-                                <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-brand-red to-rose-900 text-white font-extrabold flex items-center justify-center text-xs font-display shrink-0 shadow-md">
-                                  {d.bloodGroup}
+                            Reset Search Filter
+                          </button>
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-[380px] overflow-y-auto pr-1">
+                        {filteredDonors.map((d) => {
+                          const sched = getNextDonationSchedule(d.lastDonationDate);
+                          return (
+                            <div
+                              key={`recent-donor-${d.uid}`}
+                              id={`admin-recent-donor-${d.uid}`}
+                              className="bg-surface-dark/90 border border-border-dark hover:border-amber-500/40 p-3.5 rounded-xl space-y-2.5 transition relative overflow-hidden"
+                            >
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="flex items-center gap-2.5">
+                                  <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-brand-red to-rose-900 text-white font-extrabold flex items-center justify-center text-xs font-display shrink-0 shadow-md">
+                                    {d.bloodGroup}
+                                  </div>
+                                  <div>
+                                    <h5 className="text-xs font-extrabold text-text-bright leading-tight">
+                                      {d.fullName}
+                                    </h5>
+                                    <p className="text-[10px] text-text-muted font-mono">{d.city}, {d.state} • {d.phone || "No phone"}</p>
+                                  </div>
                                 </div>
+
+                                {/* Visual Badge for Eligibility Status */}
+                                <div className="flex flex-col items-end gap-1 shrink-0">
+                                  {sched.isEligible ? (
+                                    <span className="text-[10px] font-mono font-extrabold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 px-2.5 py-0.5 rounded-full flex items-center gap-1 shadow-sm">
+                                      <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                                      Ready
+                                    </span>
+                                  ) : (
+                                    <span className="text-[10px] font-mono font-extrabold bg-amber-500/20 text-amber-300 border border-amber-500/40 px-2.5 py-0.5 rounded-full flex items-center gap-1 shadow-sm">
+                                      <Clock className="w-3 h-3 text-amber-400" />
+                                      In Cooldown ({sched.daysLeft}d left)
+                                    </span>
+                                  )}
+                                  <span className="text-[9px] font-mono text-text-subtle font-semibold">
+                                    {d.donationCount} {d.donationCount === 1 ? "Unit" : "Units"}
+                                  </span>
+                                </div>
+                              </div>
+
+                              <div className="bg-card-dark/90 p-2.5 rounded-lg border border-border-dark/60 grid grid-cols-2 gap-2 text-[11px]">
                                 <div>
-                                  <h5 className="text-xs font-extrabold text-text-bright leading-tight">
-                                    {d.fullName}
-                                  </h5>
-                                  <p className="text-[10px] text-text-muted font-mono">{d.city}, {d.state} • {d.phone || "No phone"}</p>
+                                  <span className="text-[9px] text-text-subtle uppercase font-mono font-semibold block">Last Donated</span>
+                                  <span className="font-semibold text-text-bright font-mono text-[10px]">{sched.lastDonatedFormatted}</span>
+                                </div>
+
+                                <div>
+                                  <span className="text-[9px] text-text-subtle uppercase font-mono font-semibold block">Eligibility Window</span>
+                                  {sched.isEligible ? (
+                                    <span className="font-bold text-emerald-400 font-mono text-[10px] flex items-center gap-1">
+                                      <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                                      Cleared to Donate
+                                    </span>
+                                  ) : (
+                                    <span className="font-extrabold text-amber-400 font-mono text-[10px] block">
+                                      {sched.nextDateFormatted}
+                                      <span className="text-[9px] text-amber-500/90 font-mono font-semibold block">({sched.daysLeft} days remaining)</span>
+                                    </span>
+                                  )}
                                 </div>
                               </div>
-                              <span className="text-[10px] font-mono font-bold bg-zinc-800 text-zinc-300 px-2 py-0.5 rounded-full border border-zinc-700 shrink-0">
-                                {d.donationCount} Units
-                              </span>
-                            </div>
 
-                            <div className="bg-card-dark/90 p-2.5 rounded-lg border border-border-dark/60 grid grid-cols-2 gap-2 text-[11px]">
-                              <div>
-                                <span className="text-[9px] text-text-subtle uppercase font-mono font-semibold block">Last Donated</span>
-                                <span className="font-semibold text-text-bright font-mono text-[10px]">{sched.lastDonatedFormatted}</span>
-                              </div>
-
-                              <div>
-                                <span className="text-[9px] text-text-subtle uppercase font-mono font-semibold block">Next Donation Window</span>
-                                {sched.isEligible ? (
-                                  <span className="font-bold text-emerald-400 font-mono text-[10px] flex items-center gap-1">
-                                    <CheckCircle2 className="w-3 h-3" />
-                                    Cleared to Donate
-                                  </span>
-                                ) : (
-                                  <span className="font-extrabold text-amber-400 font-mono text-[10px] block">
-                                    {sched.nextDateFormatted}
-                                    <span className="text-[9px] text-amber-500/90 font-mono font-semibold block">({sched.daysLeft} days left)</span>
-                                  </span>
-                                )}
+                              <div className="flex items-center justify-between text-[10px] pt-0.5">
+                                <span className="text-text-subtle font-mono truncate">Email: {d.email || "Verified User"}</span>
+                                <button
+                                  id={`admin-donor-pass-link-${d.uid}`}
+                                  onClick={() => setSelectedPassDonor(d)}
+                                  className="text-amber-400 hover:text-white font-bold font-mono underline cursor-pointer flex items-center gap-1 shrink-0 ml-2"
+                                >
+                                  <Award className="w-3 h-3" />
+                                  <span>View Donor Pass</span>
+                                </button>
                               </div>
                             </div>
-
-                            <div className="flex items-center justify-between text-[10px] pt-0.5">
-                              <span className="text-text-subtle font-mono truncate">Email: {d.email || "Verified User"}</span>
-                              <button
-                                id={`admin-donor-pass-link-${d.uid}`}
-                                onClick={() => setSelectedPassDonor(d)}
-                                className="text-amber-400 hover:text-white font-bold font-mono underline cursor-pointer flex items-center gap-1 shrink-0 ml-2"
-                              >
-                                <Award className="w-3 h-3" />
-                                <span>View Donor Pass</span>
-                              </button>
-                            </div>
-                          </div>
-                        );
-                      })}
-                  </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
             )}

@@ -135,6 +135,7 @@ export default function MapContainer({
 
       const popupContent = document.createElement("div");
       popupContent.className = "p-2 font-sans text-xs bg-[#161616] text-[#F5F5F5] min-w-[200px]";
+      const streetViewUrl = `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${lat},${lng}`;
       popupContent.innerHTML = `
         <div class="flex items-center gap-2 mb-2">
           <span class="font-bold text-sm bg-brand-red px-1.5 py-0.5 rounded text-white font-display">${donor.bloodGroup}</span>
@@ -142,9 +143,14 @@ export default function MapContainer({
         </div>
         <p class="text-[#A0A0A0] text-[10px] mb-1.5">City: ${donor.city} • Age: ${donor.age}</p>
         <p class="text-[11px] mb-2 flex items-center">${statusDot}</p>
-        <button id="marker-contact-btn-${donor.uid}" class="w-full bg-[#E63946] hover:bg-red-700 text-white font-semibold py-1 rounded transition duration-200 text-[11px] cursor-pointer">
-          Contact Donor
-        </button>
+        <div class="space-y-1.5">
+          <button id="marker-contact-btn-${donor.uid}" class="w-full bg-[#E63946] hover:bg-red-700 text-white font-semibold py-1 rounded transition duration-200 text-[11px] cursor-pointer">
+            Contact Donor
+          </button>
+          <a href="${streetViewUrl}" target="_blank" rel="noopener noreferrer" class="w-full bg-[#262626] hover:bg-[#333333] border border-amber-500/40 text-amber-400 font-semibold py-1 rounded transition duration-200 text-[10px] flex items-center justify-center gap-1 cursor-pointer font-mono">
+            📷 360° Street View
+          </a>
+        </div>
       `;
 
       // Mount popup with clickable CTA trigger
@@ -190,6 +196,7 @@ export default function MapContainer({
 
         const popupContent = document.createElement("div");
         popupContent.className = "p-2 font-sans text-xs bg-[#161616] text-[#F5F5F5] min-w-[210px]";
+        const hospitalStreetViewUrl = `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${lat},${lng}`;
         popupContent.innerHTML = `
           <div class="mb-1.5 flex items-center gap-1.5 justify-between">
             <span class="text-[9px] font-bold tracking-wider uppercase px-2 py-0.5 rounded" style="background-color: ${urgencyColor}44; color: ${urgencyColor}">
@@ -199,9 +206,14 @@ export default function MapContainer({
           </div>
           <h4 class="font-bold text-[#F5F5F5] text-sm mb-1">${req.hospitalName}</h4>
           <p class="text-[10px] text-[#A0A0A0] mb-2 leading-snug">${req.hospitalAddress}</p>
-          <button id="marker-emergency-btn-${req.requestId}" class="w-full bg-[#1E1E1E] border border-zinc-700 hover:border-zinc-500 text-white font-semibold py-1 rounded transition duration-200 text-[11px] cursor-pointer">
-            Respond to Request
-          </button>
+          <div class="space-y-1.5">
+            <button id="marker-emergency-btn-${req.requestId}" class="w-full bg-[#1E1E1E] border border-zinc-700 hover:border-zinc-500 text-white font-semibold py-1 rounded transition duration-200 text-[11px] cursor-pointer">
+              Respond to Request
+            </button>
+            <a href="${hospitalStreetViewUrl}" target="_blank" rel="noopener noreferrer" class="w-full bg-[#262626] hover:bg-[#333333] border border-amber-500/40 text-amber-400 font-semibold py-1 rounded transition duration-200 text-[10px] flex items-center justify-center gap-1 cursor-pointer font-mono">
+              📷 Hospital Street View
+            </a>
+          </div>
         `;
 
         reqMarker.bindPopup(popupContent);
