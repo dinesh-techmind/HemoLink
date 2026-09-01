@@ -6,6 +6,8 @@ import SandboxSelector from "./components/SandboxSelector";
 import DonorGraphicalTimeline from "./components/DonorGraphicalTimeline";
 import DonorIdentityPassModal from "./components/DonorIdentityPassModal";
 import GoogleMapsFinder from "./components/GoogleMapsFinder";
+import BloodDonorEligibility from "./components/BloodDonorEligibility";
+import DeregisterConfirmationModal from "./components/DeregisterConfirmationModal";
 import {
   Droplet,
   MapPin,
@@ -20,6 +22,7 @@ import {
   CheckCircle2,
   Check,
   Shield,
+  ShieldCheck,
   Calendar,
   Flame,
   LogOut,
@@ -75,7 +78,7 @@ export default function App() {
   const [donors, setDonors] = useState<Donor[]>(store.getDonors());
   const [emergencies, setEmergencies] = useState<EmergencyRequest[]>(store.getEmergencies());
   const [chats, setChats] = useState<Chat[]>(store.getChats());
-  const [activeTab, setActiveTab] = useState<"search" | "emergency" | "maps" | "profile" | "chats" | "admin">("search");
+  const [activeTab, setActiveTab] = useState<"search" | "emergency" | "maps" | "eligibility" | "profile" | "chats" | "admin">("search");
 
   // Dark & Light Theme Mode State
   const [isDarkMode, setIsDarkMode] = useState<boolean>(() => localStorage.getItem("hemolink_theme") !== "light");
@@ -92,6 +95,9 @@ export default function App() {
 
   // Selected donor for Pass generation modal
   const [selectedPassDonor, setSelectedPassDonor] = useState<Donor | null>(null);
+
+  // Detailed Deregister Confirmation Modal State
+  const [showDeregisterModal, setShowDeregisterModal] = useState<boolean>(false);
 
   // Helper for admin to calculate next donation eligibility
   const getNextDonationSchedule = (lastDonationDateStr?: string) => {
@@ -1028,6 +1034,18 @@ export default function App() {
               <span>Blood Banks (Google Maps)</span>
             </button>
             <button
+              id="tab-btn-eligibility"
+              onClick={() => setActiveTab("eligibility")}
+              className={`flex items-center gap-2 px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition duration-150 cursor-pointer shrink-0 ${
+                activeTab === "eligibility"
+                  ? "bg-brand-red text-white shadow-xl shadow-brand-red/10"
+                  : "text-text-muted hover:text-text-bright hover:bg-surface-dark"
+              }`}
+            >
+              <ShieldCheck className="w-4 h-4 text-emerald-400" />
+              <span>Donor Eligibility</span>
+            </button>
+            <button
               id="tab-btn-profile"
               onClick={() => setActiveTab("profile")}
               className={`flex items-center gap-2 px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition duration-150 cursor-pointer shrink-0 ${
@@ -1724,6 +1742,16 @@ export default function App() {
           <GoogleMapsFinder userLat={userGPS.lat} userLng={userGPS.lng} />
         )}
 
+        {/* VIEW 2.8: BLOOD DONOR ELIGIBILITY & CLINICAL SCREENER */}
+        {activeTab === "eligibility" && (
+          <BloodDonorEligibility
+            currentUser={currentUser}
+            myDonorProfile={myProfile}
+            onNavigateToTab={(t) => setActiveTab(t)}
+            onOpenPassModal={(d) => setSelectedPassDonor(d)}
+          />
+        )}
+
         {/* VIEW 3: PROFILE / DASHBOARD BECOME A DONOR */}
         {activeTab === "profile" && (
           <div className="space-y-6">
@@ -1823,12 +1851,21 @@ export default function App() {
                 </div>
 
                 {/* Cooldown constraints explanation */}
-                <div className="mt-5 p-3.5 bg-surface-dark/60 rounded-xl border border-border-dark text-[11px] leading-relaxed">
-                  <h4 className="font-bold text-text-bright font-display text-[9px] uppercase tracking-wider mb-1.5 flex items-center gap-1">
-                    <Calendar className="w-3.5 h-3.5 text-rose-400" />
-                    <span>Safe Donation Cooldowns</span>
-                  </h4>
-                  <p className="text-text-muted">According to WHO medical policies, healthy donors must undergo a 3-month (90 days) wait window between whole-blood donation count procedures to ensure cellular recovery.</p>
+                <div className="mt-5 p-3.5 bg-surface-dark/60 rounded-xl border border-border-dark text-[11px] leading-relaxed space-y-2">
+                  <div className="flex items-center justify-between">
+                    <h4 className="font-bold text-text-bright font-display text-[9px] uppercase tracking-wider flex items-center gap-1">
+                      <Calendar className="w-3.5 h-3.5 text-rose-400" />
+                      <span>Safe Donation Cooldowns</span>
+                    </h4>
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab("eligibility")}
+                      className="text-[10px] text-brand-red font-bold hover:underline cursor-pointer"
+                    >
+                      Check Eligibility →
+                    </button>
+                  </div>
+                  <p className="text-text-muted">According to WHO medical policies, healthy donors must undergo a 56-day (8 weeks) recovery window between whole-blood donations to ensure cellular replenishment.</p>
                 </div>
               </div>
 
@@ -1942,11 +1979,7 @@ export default function App() {
                         </div>
                         <button
                           id="deregister-donor-btn"
-                          onClick={() => {
-                            if (confirm("Are you sure you want to delete your donor profile?")) {
-                              store.removeDonorProfile(currentUser.uid);
-                            }
-                          }}
+                          onClick={() => setShowDeregisterModal(true)}
                           className="text-xs font-semibold hover:text-white px-3.5 py-1.5 rounded-lg border border-red-950 text-red-500 hover:bg-red-950/20 cursor-pointer transition"
                         >
                           Deregister Card
@@ -2773,6 +2806,22 @@ export default function App() {
           donor={selectedPassDonor}
           user={currentUser}
           onClose={() => setSelectedPassDonor(null)}
+        />
+      )}
+
+      {/* Detailed Deregister Confirmation Modal */}
+      {myProfile && (
+        <DeregisterConfirmationModal
+          donor={myProfile}
+          currentUser={currentUser}
+          emergencies={emergencies}
+          isOpen={showDeregisterModal}
+          onClose={() => setShowDeregisterModal(false)}
+          onConfirmDeregister={() => {
+            if (currentUser) {
+              store.removeDonorProfile(currentUser.uid);
+            }
+          }}
         />
       )}
 

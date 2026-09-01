@@ -7,13 +7,16 @@ const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId); /* CRITICAL: The app will break without this line */
 export const auth = getAuth();
 
-// Test Connection
+// Validate Connection to Firestore with graceful offline handling
 async function testConnection() {
   try {
     await getDocFromServer(doc(db, "test", "connection"));
-  } catch (error) {
-    if (error instanceof Error && error.message.includes("the client is offline")) {
-      console.warn("Please check your Firebase configuration or network status.");
+  } catch (error: any) {
+    const msg = error instanceof Error ? error.message : String(error);
+    const code = error?.code || "";
+    if (msg.includes("the client is offline") || msg.includes("unavailable") || code === "unavailable" || code === "failed-precondition") {
+      // Client operates gracefully with local storage / cache synchronization
+      console.info("Firestore: Working in offline/cached synchronization mode.");
     }
   }
 }

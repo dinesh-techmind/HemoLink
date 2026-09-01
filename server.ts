@@ -70,14 +70,13 @@ Reply directly as the person. Do NOT write "Donor:" or "Seeker:" prefix. Make su
 
     // Modern SDK model call
     const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
+      model: "gemini-3.7-flash",
       contents: fullPrompt,
     });
 
     const replyText = response.text?.trim() || "Understood. I'm heading over and will contact you when I arrive.";
     res.json({ reply: replyText });
-  } catch (err: any) {
-    console.error("Gemini generateContent error handled gracefully", err);
+  } catch (_err: any) {
     res.json({
       reply: "Thank you for the message. Let's arrange details at the blood bank reception."
     });
@@ -114,10 +113,10 @@ app.post("/api/gemini-maps-search", async (req: express.Request, res: express.Re
       };
     }
 
-    // Call gemini-3.5-flash with googleMaps tool grounding
+    // Call gemini-3.7-flash with googleMaps tool grounding
     // DO NOT set responseMimeType or responseSchema when using googleMaps
     const response = await ai.models.generateContent({
-      model: "gemini-3.5-flash",
+      model: "gemini-3.7-flash",
       contents: `Query: ${searchQuery}. User latitude: ${lat || "unknown"}, longitude: ${lng || "unknown"}. List nearby verified blood banks, hospitals, or blood donation units with their addresses, contact info, operating hours, and emergency directions.`,
       config
     });
@@ -145,9 +144,7 @@ app.post("/api/gemini-maps-search", async (req: express.Request, res: express.Re
       links,
       groundingChunks
     });
-  } catch (err: any) {
-    console.log("Info: /api/gemini-maps-search handled with local fallback:", err?.message || err);
-
+  } catch (_err: any) {
     // Fallback response when quota is exceeded or API errors occur
     const { query, lat, lng } = req.body;
     const userLat = Number(lat) || 13.0827;
