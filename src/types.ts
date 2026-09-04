@@ -101,3 +101,13 @@ export interface AppNotification {
   requestId?: string;
   read: boolean;
 }
+
+export interface AdminAuditLog {
+  id: string;
+  action: string;           // e.g. "Donor Removed", "SOS Fulfilled", "User Removed", "SOS Deleted"
+  details: string;          // Human-readable explanation of target/context
+  targetId?: string;        // ID of entity affected
+  adminId: string;          // Admin's UID or identifier
+  adminEmail: string;       // Admin's email for clear accountability
+  timestamp: string;        // ISO format string
+}

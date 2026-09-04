@@ -1,7 +1,7 @@
+#!/bin/bash
+cat << 'INNER_EOF' > src/components/DonorIdentityPassModal.tsx
 import React, { useRef, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
-import * as htmlToImage from "html-to-image";
-import jsPDF from "jspdf";
 import { Donor, AppUser } from "../types";
 import { store } from "../lib/store";
 import { auth } from "../lib/firebase";
@@ -17,8 +17,7 @@ import {
   CheckCircle2,
   Sparkles,
   Edit3,
-  HardDrive,
-  Download
+  HardDrive
 } from "lucide-react";
 
 interface DonorIdentityPassModalProps {
@@ -57,42 +56,6 @@ export default function DonorIdentityPassModal({ donor: initialDonor, user, onCl
     }
   }
 
-  
-  const generatePDF = async (): Promise<Blob> => {
-    if (!cardRef.current) throw new Error("Card reference not found");
-    // Hide buttons temporarily if they were inside (they are outside, so it's fine)
-    // Use html-to-image instead of html2canvas to avoid oklab/oklch parsing errors
-    const imgData = await htmlToImage.toJpeg(cardRef.current, { quality: 1.0, pixelRatio: 4, backgroundColor: '#111111' });
-    
-    // We need to calculate dimensions manually since we don't get a canvas object back directly
-    const rect = cardRef.current.getBoundingClientRect();
-    const width = rect.width * 4;
-    const height = rect.height * 4;
-    
-    const pdf = new jsPDF({
-      orientation: 'landscape',
-      unit: 'px',
-      format: [width, height]
-    });
-    pdf.addImage(imgData, 'JPEG', 0, 0, width, height);
-    return pdf.output('blob');
-  };
-
-  const handleDownloadPDF = async () => {
-    try {
-      const blob = await generatePDF();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `Hemolink_Donor_Pass_${donor.fullName.replace(/\s+/g, '_')}.pdf`;
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch (e) {
-      console.error(e);
-      alert("Failed to generate PDF");
-    }
-  };
-
   const handlePrint = () => {
     window.print();
   };
@@ -126,20 +89,6 @@ export default function DonorIdentityPassModal({ donor: initialDonor, user, onCl
         let token = (window as any)._googleOAuthToken;
         if (!token) {
             const provider = new GoogleAuthProvider();
-            provider.addScope('https://mail.google.com/');
-            provider.addScope('https://www.googleapis.com/auth/gmail.addons.current.action.compose');
-            provider.addScope('https://www.googleapis.com/auth/gmail.addons.current.message.action');
-            provider.addScope('https://www.googleapis.com/auth/gmail.addons.current.message.metadata');
-            provider.addScope('https://www.googleapis.com/auth/gmail.addons.current.message.readonly');
-            provider.addScope('https://www.googleapis.com/auth/gmail.compose');
-            provider.addScope('https://www.googleapis.com/auth/gmail.insert');
-            provider.addScope('https://www.googleapis.com/auth/gmail.labels');
-            provider.addScope('https://www.googleapis.com/auth/gmail.metadata');
-            provider.addScope('https://www.googleapis.com/auth/gmail.modify');
-            provider.addScope('https://www.googleapis.com/auth/gmail.readonly');
-            provider.addScope('https://www.googleapis.com/auth/gmail.send');
-            provider.addScope('https://www.googleapis.com/auth/gmail.settings.basic');
-            provider.addScope('https://www.googleapis.com/auth/gmail.settings.sharing');
             provider.addScope('https://www.googleapis.com/auth/drive.file');
             const result = await signInWithPopup(auth, provider);
             const credential = GoogleAuthProvider.credentialFromResult(result);
@@ -206,7 +155,7 @@ Official Emergency Pass • Issued by HEMOLINK Network
       {showEditModal && (
          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
              <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setShowEditModal(false)}></div>
-             <div className="relative w-full max-w-md bg-card-dark border border-border-dark rounded-2xl p-6 shadow-2xl animate-in fade-in zoom-in-95 overflow-y-auto max-h-[90vh]">
+             <div className="relative w-full max-w-md bg-card-dark border border-border-dark rounded-2xl p-6 shadow-2xl animate-in fade-in zoom-in-95">
                  <div className="flex justify-between items-center mb-4">
                      <h2 className="text-lg font-bold text-white font-display">Modify Pass Details</h2>
                      <button onClick={() => setShowEditModal(false)} className="text-text-muted hover:text-white">
@@ -244,7 +193,7 @@ Official Emergency Pass • Issued by HEMOLINK Network
          </div>
       )}
 
-      <div className="relative w-full max-w-2xl bg-[#0D0D0D] border border-border-dark rounded-3xl shadow-2xl overflow-y-auto max-h-[95vh] sm:max-h-[90vh] print:shadow-none print:border-none print:rounded-none z-10 my-auto animate-in fade-in zoom-in-95 duration-200">
+      <div className="relative w-full max-w-2xl bg-[#0D0D0D] border border-border-dark rounded-3xl shadow-2xl overflow-hidden print:shadow-none print:border-none print:rounded-none z-10 my-auto animate-in fade-in zoom-in-95 duration-200">
         <div className="h-2 w-full bg-gradient-to-r from-brand-red via-rose-500 to-amber-500 print:hidden"></div>
         <button onClick={onClose} className="absolute top-4 right-4 text-text-subtle hover:text-white bg-surface-dark p-2 rounded-full transition no-print z-20"><X className="w-5 h-5" /></button>
 
@@ -291,7 +240,7 @@ Official Emergency Pass • Issued by HEMOLINK Network
               <div className="sm:col-span-2 space-y-3">
                   <div>
                     <h2 className="text-xl font-extrabold text-white font-display leading-tight">{donor.fullName}</h2>
-                    <p className="text-xs text-text-muted flex items-center gap-1 mt-0.5 font-bold">
+                    <p className="text-xs text-text-muted flex items-center gap-1 mt-0.5 font-medium">
                       <MapPin className="w-3.5 h-3.5 text-brand-red" />
                       <span>{donor.city}, {donor.state} ({donor.pincode})</span>
                     </p>
@@ -299,25 +248,25 @@ Official Emergency Pass • Issued by HEMOLINK Network
                   
                   <div className="grid grid-cols-2 gap-2 text-xs pt-1 border-t border-border-dark">
                     <div className="space-y-0.5 mt-2">
-                      <span className="text-[9px] text-text-subtle uppercase font-mono font-extrabold block">Total Donated</span>
+                      <span className="text-[9px] text-text-subtle uppercase font-mono font-semibold block">Total Donated</span>
                       <span className="text-xs font-bold text-white font-mono flex items-center gap-1"><Droplet className="w-3 h-3 text-brand-red fill-brand-red" />{donor.donationCount} Units Saved</span>
                     </div>
                     
                     <div className="space-y-0.5 mt-2">
-                      <span className="text-[9px] text-text-subtle uppercase font-mono font-extrabold block">Availability Status</span>
+                      <span className="text-[9px] text-text-subtle uppercase font-mono font-semibold block">Availability Status</span>
                       <span className={`text-xs font-bold font-mono flex items-center gap-1 ${donor.isAvailable ? "text-emerald-400" : "text-amber-400"}`}>
                         <CheckCircle2 className="w-3 h-3" /> {donor.isAvailable ? "Ready to Donate" : "Away / Cooldown"}
                       </span>
                     </div>
 
                     <div className="space-y-0.5">
-                      <span className="text-[9px] text-text-subtle uppercase font-mono font-extrabold block">Phone Contact</span>
-                      <span className="text-[11px] font-extrabold text-text-bright font-mono flex items-center gap-1 truncate"><Phone className="w-3 h-3 text-text-muted" />{donor.phone || "Not Listed"}</span>
+                      <span className="text-[9px] text-text-subtle uppercase font-mono font-semibold block">Phone Contact</span>
+                      <span className="text-[11px] font-semibold text-text-bright font-mono flex items-center gap-1 truncate"><Phone className="w-3 h-3 text-text-muted" />{donor.phone || "Not Listed"}</span>
                     </div>
                     
                     <div className="space-y-0.5">
-                      <span className="text-[9px] text-text-subtle uppercase font-mono font-extrabold block">Registered Email</span>
-                      <span className="text-[11px] font-extrabold text-text-bright font-mono flex items-center gap-1 truncate"><Mail className="w-3 h-3 text-text-muted" />{donor.email || "Verified"}</span>
+                      <span className="text-[9px] text-text-subtle uppercase font-mono font-semibold block">Registered Email</span>
+                      <span className="text-[11px] font-semibold text-text-bright font-mono flex items-center gap-1 truncate"><Mail className="w-3 h-3 text-text-muted" />{donor.email || "Verified"}</span>
                     </div>
                   </div>
 
@@ -364,11 +313,8 @@ Official Emergency Pass • Issued by HEMOLINK Network
             <button onClick={() => setShowEditModal(true)} className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-surface-dark border border-border-dark text-text-subtle hover:text-white text-xs font-bold flex items-center gap-2">
                 <Edit3 className="w-4 h-4" /> Modify Pass Details
             </button>
-            <button onClick={handleDownloadPDF} className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-surface-dark border border-border-dark text-text-subtle hover:text-white text-xs font-bold flex items-center justify-center gap-2">
-                <Download className="w-4 h-4" /> Download PDF
-            </button>
             <button id="print-donor-pass-btn" onClick={handleSaveToDrive} disabled={isUploading} className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-brand-red hover:bg-brand-red-dark text-white text-xs font-extrabold flex items-center justify-center gap-2 shadow-lg">
-               {isUploading ? "Uploading..." : <><HardDrive className="w-4 h-4" /> Save to Drive</>}
+               {isUploading ? "Uploading..." : <><HardDrive className="w-4 h-4" /> Save to Drive & Print</>}
             </button>
           </div>
         </div>
@@ -376,3 +322,4 @@ Official Emergency Pass • Issued by HEMOLINK Network
     </div>
   );
 }
+INNER_EOF

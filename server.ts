@@ -3,6 +3,8 @@ import path from "path";
 import dotenv from "dotenv";
 import { GoogleGenAI } from "@google/genai";
 import { createServer as createViteServer } from "vite";
+import { requireAuth, AuthRequest } from "./src/middleware/auth.ts";
+import { getUsers, getOrCreateUser } from "./src/db/users.ts";
 
 dotenv.config();
 
@@ -33,6 +35,33 @@ function getAIClient(): GoogleGenAI | null {
 // Health check endpoint
 app.get("/api/health", (req, res) => {
   res.json({ status: "ok" });
+});
+
+// Cloud SQL PostgreSQL User Synchronization & Query endpoints
+app.post("/api/sync-user", requireAuth, async (req: AuthRequest, res: express.Response) => {
+  try {
+    const uid = req.user?.uid;
+    const email = req.user?.email || "";
+    const { fullName, role } = req.body || {};
+    if (!uid) {
+      return res.status(401).json({ error: "Missing authenticated user ID" });
+    }
+    const user = await getOrCreateUser(uid, email, fullName, role || "user");
+    res.json(user);
+  } catch (error: any) {
+    console.error("Failed to sync user with Cloud SQL:", error);
+    res.status(500).json({ error: error.message || "Failed to sync user" });
+  }
+});
+
+app.get("/api/users", requireAuth, async (req: AuthRequest, res: express.Response) => {
+  try {
+    const users = await getUsers();
+    res.json(users);
+  } catch (error: any) {
+    console.error("Failed to fetch users:", error);
+    res.status(500).json({ error: error.message || "Failed to fetch users" });
+  }
 });
 
 // Context-aware AI Chat responder using Gemini

@@ -60,6 +60,21 @@
         "requestId": { "type": "string" }
       },
       "required": ["id", "title", "message", "type", "timestamp", "read"]
+    },
+    "AdminAuditLog": {
+      "title": "AdminAuditLog",
+      "description": "Immutable operational log entry detailing administrative moderation actions for transparency and accountability.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "action": { "type": "string" },
+        "details": { "type": "string" },
+        "targetId": { "type": "string" },
+        "adminId": { "type": "string" },
+        "adminEmail": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "action", "details", "adminId", "adminEmail", "timestamp"]
     }
   },
   "firestore": {
@@ -74,6 +89,10 @@
     "/notifications/{notificationId}": {
       "schema": { "$ref": "#/entities/AppNotification" },
       "description": "SMS and Email dispatch log tracks synced dynamically to the database."
+    },
+    "/admin_logs/{logId}": {
+      "schema": { "$ref": "#/entities/AdminAuditLog" },
+      "description": "Immutable administrative action audit trail recording actions like Donor Removed and SOS Fulfilled."
     }
   }
 }

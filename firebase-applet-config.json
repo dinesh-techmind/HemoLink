@@ -3,8 +3,10 @@
   "appId": "1:77082218494:web:b3520896a2df1076797aaf",
   "apiKey": "AIzaSyBFJsL6X3iLQeBT1MfFw0kKtXWX99h0Vdw",
   "authDomain": "nomadic-renderer-q6vd8.firebaseapp.com",
-  "firestoreDatabaseId": "ai-studio-5c9aea2d-9480-409a-bded-4dd3d683645d",
+  "firestoreDatabaseId": "ai-studio-emergencyblooddo-5c9aea2d-9480-409a-bded-4dd3d683645d",
   "storageBucket": "nomadic-renderer-q6vd8.firebasestorage.app",
   "messagingSenderId": "77082218494",
-  "measurementId": ""
+  "measurementId": "",
+  "oAuthClientId": "77082218494-gsq22h5vv41spe9k2rrkfnp02afri9qk.apps.googleusercontent.com",
+  "recaptchaSiteKey": ""
 }

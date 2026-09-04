@@ -1,13 +1,16 @@
+import { motion, AnimatePresence } from "motion/react";
 import { useState, useEffect, useMemo, FormEvent } from "react";
 import { store, calculateDistance } from "./lib/store";
-import { Donor, EmergencyRequest, Chat, Message, AppUser, BloodGroup, UrgencyLevel, Gender, AppNotification } from "./types";
+import { Donor, EmergencyRequest, Chat, Message, AppUser, BloodGroup, UrgencyLevel, Gender, AppNotification, AdminAuditLog } from "./types";
 import MapContainer from "./components/MapContainer";
 import SandboxSelector from "./components/SandboxSelector";
 import DonorGraphicalTimeline from "./components/DonorGraphicalTimeline";
 import DonorIdentityPassModal from "./components/DonorIdentityPassModal";
+import OnboardingGate from "./components/OnboardingGate";
 import GoogleMapsFinder from "./components/GoogleMapsFinder";
 import BloodDonorEligibility from "./components/BloodDonorEligibility";
 import DeregisterConfirmationModal from "./components/DeregisterConfirmationModal";
+import DonorRegistrationTrendChart from "./components/DonorRegistrationTrendChart";
 import {
   Droplet,
   MapPin,
@@ -41,7 +44,8 @@ import {
   QrCode,
   Printer,
   Compass,
-  Clock
+  Clock,
+  ClipboardList
 } from "lucide-react";
 
 // List of standard blood groups
@@ -81,18 +85,8 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<"search" | "emergency" | "maps" | "eligibility" | "profile" | "chats" | "admin">("search");
 
   // Dark & Light Theme Mode State
-  const [isDarkMode, setIsDarkMode] = useState<boolean>(() => localStorage.getItem("hemolink_theme") !== "light");
-
-  useEffect(() => {
-    if (isDarkMode) {
-      document.documentElement.classList.remove("light-mode");
-      localStorage.setItem("hemolink_theme", "dark");
-    } else {
-      document.documentElement.classList.add("light-mode");
-      localStorage.setItem("hemolink_theme", "light");
-    }
-  }, [isDarkMode]);
-
+  
+  
   // Selected donor for Pass generation modal
   const [selectedPassDonor, setSelectedPassDonor] = useState<Donor | null>(null);
 
@@ -156,6 +150,9 @@ export default function App() {
 
   // Admin Console filter state
   const [adminRecentDonorSearch, setAdminRecentDonorSearch] = useState<string>("");
+  const [adminLogs, setAdminLogs] = useState<AdminAuditLog[]>(store.getAdminLogs());
+  const [adminLogActionFilter, setAdminLogActionFilter] = useState<string>("All");
+  const [adminLogSearchQuery, setAdminLogSearchQuery] = useState<string>("");
 
   // Modal Emergency Request form fields state
   const [isEmergencyModalOpen, setIsEmergencyModalOpen] = useState<boolean>(false);
@@ -201,6 +198,8 @@ export default function App() {
   // App notification state
   const [notifications, setNotifications] = useState<AppNotification[]>(store.getNotifications());
   const [showNotificationCenter, setShowNotificationCenter] = useState<boolean>(false);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState<boolean>(false);
+  const [isLoggingOut, setIsLoggingOut] = useState<boolean>(false);
 
   // Register state change listeners
   useEffect(() => {
@@ -212,9 +211,59 @@ export default function App() {
       setChats(store.getChats());
       setUserGPS(store.getGPSLocation());
       setNotifications(store.getNotifications());
+      setAdminLogs(store.getAdminLogs());
     });
     return unsubscribe;
   }, []);
+
+  
+  // Format timestamp for audit logs
+  const formatLogDate = (dateStr: string) => {
+    try {
+      const d = new Date(dateStr);
+      return d.toLocaleString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: true
+      });
+    } catch {
+      return dateStr;
+    }
+  };
+
+  // Filtered administrative audit logs
+  const filteredAdminLogs = useMemo(() => {
+    return adminLogs.filter((log) => {
+      if (adminLogActionFilter !== "All" && log.action !== adminLogActionFilter) {
+        return false;
+      }
+      if (adminLogSearchQuery.trim()) {
+        const q = adminLogSearchQuery.toLowerCase().trim();
+        const match =
+          log.action.toLowerCase().includes(q) ||
+          log.details.toLowerCase().includes(q) ||
+          log.adminEmail.toLowerCase().includes(q) ||
+          log.adminId.toLowerCase().includes(q) ||
+          (log.targetId && log.targetId.toLowerCase().includes(q));
+        if (!match) return false;
+      }
+      return true;
+    });
+  }, [adminLogs, adminLogActionFilter, adminLogSearchQuery]);
+
+  const handleLogout = () => {
+    setShowLogoutConfirm(false);
+    setIsLoggingOut(true);
+    setTimeout(() => {
+      store.logOut();
+      setIsLoggingOut(false);
+      setActiveTab("search");
+    }, 2500); // 2.5s animation duration
+  };
 
   // Sync active chat messages
   const activeChatMessages = useMemo(() => {
@@ -482,6 +531,13 @@ export default function App() {
       return;
     }
 
+    // Bypass OTP for super admin
+    const isOwnerAdmin = emailStr.toLowerCase().includes("admin") || nameStr.toLowerCase().includes("admin");
+    if (isOwnerAdmin) {
+      store.registerUser(emailStr, nameStr, "admin");
+      return;
+    }
+
     const code = Math.floor(100000 + Math.random() * 900000).toString();
     setGeneratedOTP(code);
     setAuthStep("otp");
@@ -546,288 +602,11 @@ export default function App() {
   };
 
   if (!currentUser) {
-    return (
-      <div className="flex flex-col min-h-screen text-[#F5F5F5] bg-[#0A0A0A] font-sans justify-center items-center px-4 py-8 relative selection:bg-brand-red selection:text-white">
-        
-        {/* Absolute Background Mesh Visual */}
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(230,57,70,0.04)_0,transparent_65%)] pointer-events-none"></div>
-
-        {/* Ambient Top Notification Banner for Simulated SMS Gateway */}
-        {smsGatewayNotification && (
-          <div className="w-full max-w-md bg-[#1C1616] border border-brand-red/30 p-4 rounded-xl shadow-2xl mb-6 relative overflow-hidden animate-bounce text-xs">
-            <div className="absolute left-0 top-0 bottom-0 w-1 bg-brand-red"></div>
-            <div className="flex items-start gap-2.5">
-              <span className="text-brand-red transform scale-110">📩</span>
-              <div className="space-y-1.5 flex-grow">
-                <span className="font-extrabold uppercase text-[9px] tracking-wider text-brand-red font-mono block">Simulated OTP Gate Dispatch</span>
-                <p className="text-text-bright leading-relaxed font-mono font-bold select-all">{smsGatewayNotification}</p>
-                <div className="flex justify-end gap-2 mt-1">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setUserOTPInput(generatedOTP);
-                      alert("Code simulated & auto-filled!");
-                    }}
-                    className="bg-brand-red/10 border border-brand-red/20 hover:bg-brand-red hover:text-white text-[10px] text-brand-red px-2.5 py-1 rounded-md transition font-semibold cursor-pointer"
-                  >
-                    ⚡ Auto-Fill Code ({generatedOTP})
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Auth Module Card Box */}
-        <div className="w-full max-w-md bg-card-dark border border-border-dark rounded-3xl p-6 sm:p-8 shadow-2xl relative z-10 space-y-6">
-          
-          {/* Brand Emblem */}
-          <div className="text-center space-y-2">
-            <div className="inline-flex w-12 h-12 rounded-2xl bg-brand-red items-center justify-center shadow-lg shadow-brand-red/40 mx-auto">
-              <Droplet className="w-7 h-7 text-white fill-white" />
-            </div>
-            <div>
-              <h1 className="text-2xl font-extrabold tracking-tight text-text-bright font-display">
-                HEMOLINK
-              </h1>
-              <p className="text-[10px] text-text-muted font-bold uppercase tracking-widest mt-0.5">
-                Connecting donors. Saving Lifes.
-              </p>
-            </div>
-          </div>
-
-          <div className="h-[1px] bg-border-dark"></div>
-
-          {authStep === "credentials" ? (
-            /* PHASE 1: CREDENTIAL LAYOUT */
-            <form onSubmit={handleRequestOTP} className="space-y-4">
-              
-              {/* Selector Tabs for Login vs Register */}
-              <div className="grid grid-cols-2 p-1 bg-surface-dark border border-border-dark rounded-xl">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsSignUp(false);
-                    setAuthError("");
-                  }}
-                  className={`py-1.5 text-xs font-semibold rounded-lg transition-all ${
-                    !isSignUp 
-                      ? "bg-brand-red text-white shadow-sm" 
-                      : "text-text-muted hover:text-white"
-                  }`}
-                >
-                  Sign In Account
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsSignUp(true);
-                    setAuthError("");
-                  }}
-                  className={`py-1.5 text-xs font-semibold rounded-lg transition-all ${
-                    isSignUp 
-                      ? "bg-brand-red text-white shadow-sm" 
-                      : "text-text-muted hover:text-white"
-                  }`}
-                >
-                  Create New Account
-                </button>
-              </div>
-
-              <div>
-                <p className="text-[11px] text-center text-text-muted">
-                  {isSignUp 
-                    ? "Welcome! Join our active lifesaver directory. Enter details to register & request a secure Verification OTP." 
-                    : "Access your donor profile & active emergency coordination board securely using One-Time Password verification."}
-                </p>
-              </div>
-
-              {/* Login Fields */}
-              <div className="space-y-3 pt-1">
-                <div>
-                  <label className="text-[10px] font-mono uppercase tracking-wider text-text-subtle block mb-1">Full Name</label>
-                  <div className="relative">
-                    <input
-                      type="text"
-                      required
-                      placeholder="e.g. Sandra Bullock"
-                      value={loginName}
-                      onChange={(e) => setLoginName(e.target.value)}
-                      className="w-full bg-surface-dark border border-border-dark rounded-xl px-3.5 py-2.5 text-xs text-text-bright placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
-                    />
-                    <User className="absolute right-3.5 top-3 w-4 h-4 text-zinc-605" />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="text-[10px] font-mono uppercase tracking-wider text-text-subtle block mb-1">Email Address</label>
-                  <div className="relative">
-                    <input
-                      type="email"
-                      required
-                      placeholder="name@organization.com"
-                      value={loginEmail}
-                      onChange={(e) => setLoginEmail(e.target.value)}
-                      className="w-full bg-surface-dark border border-border-dark rounded-xl px-3.5 py-2.5 text-xs text-text-bright placeholder-zinc-750 focus:outline-none focus:border-zinc-500"
-                    />
-                    <Lock className="absolute right-3.5 top-3 w-4 h-4 text-zinc-605" />
-                  </div>
-                </div>
-              </div>
-
-              {authError && (
-                <div className="text-xs text-brand-red bg-brand-red/5 border border-brand-red/10 p-2.5 rounded-xl font-medium leading-relaxed">
-                  {authError}
-                </div>
-              )}
-
-              {/* Action trigger button */}
-              <button
-                type="submit"
-                id="request-otp-btn"
-                className="w-full py-3 bg-brand-red hover:bg-brand-red-dark text-white font-extrabold text-xs tracking-wider uppercase rounded-xl shadow-lg transition cursor-pointer"
-              >
-                {isSignUp ? "Register & Request Secure OTP" : "Request One-Time PIN (OTP)"}
-              </button>
-
-              <div className="pt-2">
-                <div className="h-[1px] bg-[#1F1F1F]"></div>
-              </div>
-
-              {/* PRE-FILLED SANDBOX CREDENTIAL CHEATS FOR TESTING */}
-              <div className="space-y-2 bg-[#121212] border border-border-dark p-3.5 rounded-2xl">
-                <span className="text-[9px] font-extrabold uppercase tracking-widest text-[#999] block text-center mb-1">🧪 Sandbox Test User Accounts (Quick-Fill)</span>
-                <p className="text-[10px] text-text-muted text-center leading-normal mb-2">Select a test persona profile to instantly auto-populate credential fields:</p>
-                
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setLoginName("Priya Sharma");
-                      setLoginEmail("priya@gmail.com");
-                      setIsSignUp(false);
-                      setAuthError("");
-                    }}
-                    className="bg-zinc-900 border border-zinc-800 hover:border-zinc-500 py-1.5 px-2 rounded-lg text-[10px] text-neutral-300 font-semibold text-center truncate cursor-pointer transition"
-                  >
-                    🩸 Seeker Priya
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setLoginName("Rahul Kumar");
-                      setLoginEmail("rahul@gmail.com");
-                      setIsSignUp(false);
-                      setAuthError("");
-                    }}
-                    className="bg-zinc-900 border border-zinc-800 hover:border-zinc-500 py-1.5 px-2 rounded-lg text-[10px] text-neutral-300 font-semibold text-center truncate cursor-pointer transition"
-                  >
-                    🛡️ Donor Rahul
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setLoginName("Master Admin");
-                      setLoginEmail("admin@bloodfinder.org");
-                      setIsSignUp(false);
-                      setAuthError("");
-                    }}
-                    className="bg-zinc-900 border border-zinc-800 hover:border-amber-600/60 py-1.5 px-2 rounded-lg text-[10px] text-amber-400 font-semibold text-center truncate cursor-pointer transition"
-                  >
-                    🔥 System Admin
-                  </button>
-                </div>
-              </div>
-
-            </form>
-          ) : (
-            /* PHASE 2: OTP COMPLIANCE CHALLENGE */
-            <form onSubmit={handleVerifyOTP} className="space-y-4">
-              <div className="text-center space-y-1.5">
-                <span className="inline-block bg-brand-red/10 border border-brand-red/30 text-brand-red font-mono text-[10px] px-2.5 py-0.5 rounded-full font-bold">
-                  OTP VERIFICATION REQUIRED
-                </span>
-                <p className="text-xs text-text-bright font-sans">Please provide the 6-digit confirmation PIN code dispatched to:</p>
-                <p className="text-xs font-bold font-mono text-emerald-400 select-all">{loginEmail}</p>
-              </div>
-
-              {/* High Contrast Segmented Input Styling */}
-              <div className="space-y-2">
-                <label className="text-[10px] font-mono uppercase tracking-wider text-text-subtle text-center block">Enter 6-Digit Code</label>
-                <div className="relative max-w-[240px] mx-auto text-center">
-                  <input
-                    type="text"
-                    required
-                    maxLength={6}
-                    placeholder="Enter PIN"
-                    value={userOTPInput}
-                    onChange={(e) => {
-                      const val = e.target.value.replace(/\D/g, "");
-                      setUserOTPInput(val);
-                    }}
-                    className="w-full bg-surface-dark border-2 border-[#333] text-center tracking-[1.5em] pl-[1.58em] font-mono py-3 rounded-2xl text-lg font-bold text-brand-red focus:outline-none focus:border-brand-red/75"
-                  />
-                </div>
-              </div>
-
-              {authError && (
-                <div className="text-xs text-brand-red bg-brand-red/5 border border-brand-red/10 p-2.5 rounded-xl text-center font-medium">
-                  {authError}
-                </div>
-              )}
-
-              {/* Submission CTA buttons */}
-              <div className="space-y-2 pt-2">
-                <button
-                  type="submit"
-                  id="verify-otp-btn"
-                  className="w-full py-3 bg-brand-red hover:bg-brand-red-dark text-white font-extrabold text-xs tracking-wider uppercase rounded-xl transition cursor-pointer shadow-md"
-                >
-                  Verify Verification PIN Code
-                </button>
-
-                <div className="flex items-center justify-between text-[11px] px-1 pt-1.5 font-sans">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setAuthStep("credentials");
-                      setAuthError("");
-                      setSmsGatewayNotification(null);
-                    }}
-                    className="text-text-muted hover:text-white transition cursor-pointer"
-                  >
-                    ← Edit Account Details
-                  </button>
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      const code = Math.floor(100000 + Math.random() * 900000).toString();
-                      setGeneratedOTP(code);
-                      setSmsGatewayNotification(`📩 [SECURE PORTAL REGULATION GATEWAY]: Re-dispatched secure OTP validation code: ${code}`);
-                      alert("A fresh OTP code has been successfully re-routed!");
-                    }}
-                    className="text-amber-500 hover:text-amber-400 transition cursor-pointer font-medium"
-                  >
-                    Resend Code (OTP)
-                  </button>
-                </div>
-              </div>
-            </form>
-          )}
-
-        </div>
-
-        {/* Legal Regulations Disclaimer */}
-        <p className="text-[9px] text-[#444] text-center max-w-sm mt-8 leading-normal font-sans">
-          This system handles confidential organ compatibility matches and geolocation coordinates. Connection pipelines are verified on simulated secure gateways.
-        </p>
-
-      </div>
-    );
+    return <OnboardingGate onComplete={() => setCurrentUser(store.getCurrentUser())} />;
   }
 
   return (
-    <div className={`flex flex-col min-h-screen ${isDarkMode ? "bg-[#0D0D0D] text-[#F5F5F5]" : "bg-slate-50 text-slate-900 light-mode"} font-sans selection:bg-brand-red selection:text-white transition-colors duration-200`}>
+    <div className="flex flex-col min-h-screen bg-base-dark text-text-bright font-sans selection:bg-brand-red selection:text-white transition-colors duration-200">
       {/* Upper Alerts Ribbon for Critical Emergencies */}
       {emergencies.filter((e) => e.status === "Active" && e.urgencyLevel === "Critical").length > 0 && (
         <div className="bg-brand-red text-white py-2 px-4 text-center text-xs font-bold tracking-wide animate-pulse flex items-center justify-center gap-2">
@@ -878,25 +657,7 @@ export default function App() {
 
           {/* Controls: Theme Toggle & Notification Center & User Status */}
           <div className="flex items-center gap-3 relative shrink-0">
-            {/* Theme Toggle Button */}
-            <button
-              id="theme-toggle-btn"
-              onClick={() => setIsDarkMode(!isDarkMode)}
-              title={isDarkMode ? "Switch to Light Mode" : "Switch to Dark Mode"}
-              className="p-2.5 bg-surface-dark border border-border-dark rounded-xl hover:bg-surface-dark/80 text-text-bright transition cursor-pointer flex items-center gap-2"
-            >
-              {isDarkMode ? (
-                <>
-                  <Sun className="w-4 h-4 text-amber-400 animate-spin-slow" />
-                  <span className="hidden sm:inline text-xs font-semibold text-text-bright">Light Mode</span>
-                </>
-              ) : (
-                <>
-                  <Moon className="w-4 h-4 text-indigo-400" />
-                  <span className="hidden sm:inline text-xs font-semibold text-text-bright">Dark Mode</span>
-                </>
-              )}
-            </button>
+            
 
             {currentUser && (
               <>
@@ -905,7 +666,7 @@ export default function App() {
                   <button
                     id="header-notification-bell"
                     onClick={() => setShowNotificationCenter(!showNotificationCenter)}
-                    className="p-2.5 bg-surface-dark border border-border-dark rounded-xl hover:bg-zinc-800 text-text-subtle hover:text-white transition cursor-pointer relative"
+                    className="p-2.5 bg-surface-dark border border-border-dark rounded-xl hover:bg-surface-dark text-text-subtle hover:text-text-bright transition cursor-pointer relative"
                   >
                     <Bell className="w-5 h-5 animate-pulse" />
                     {notifications.filter((n) => !n.read).length > 0 && (
@@ -918,7 +679,7 @@ export default function App() {
                 {/* Dropdown UI */}
                 {showNotificationCenter && (
                   <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-[#121214] border border-border-dark shadow-2xl rounded-2xl p-4 z-50 space-y-3.5 text-xs text-text-bright">
-                    <header className="flex items-center justify-between border-b border-[#222] pb-2">
+                    <header className="flex items-center justify-between border-b border-border-dark pb-2">
                       <div className="flex items-center gap-1.5 font-bold text-text-bright font-display text-[13px]">
                         <Bell className="w-4 h-4 text-brand-red" />
                         <span>Live Dispatch Signals</span>
@@ -963,7 +724,7 @@ export default function App() {
                             <p className="text-[#AAA] text-[11px] leading-relaxed break-words">{n.message}</p>
                             {n.recipient && (
                               <div className="font-mono text-[9px] text-brand-red flex items-center gap-1.5 border-t border-[#1C1C1F] pt-1.5">
-                                <span className="bg-[#1C1C1F] text-zinc-400 px-1 py-0.2 rounded uppercase">to:</span>
+                                <span className="bg-surface-dark text-text-muted px-1 py-0.2 rounded uppercase">to:</span>
                                 <span className="truncate">{n.recipient}</span>
                               </div>
                             )}
@@ -984,6 +745,13 @@ export default function App() {
                   {currentUser.fullName ? currentUser.fullName[0].toUpperCase() : "U"}
                 </div>
               </div>
+              <button
+                onClick={() => setShowLogoutConfirm(true)}
+                className="p-2.5 bg-surface-dark border border-border-dark rounded-xl hover:bg-brand-red/10 hover:border-brand-red/30 hover:text-brand-red text-text-muted transition cursor-pointer flex items-center justify-center"
+                title="Log Out"
+              >
+                <LogOut className="w-4 h-4" />
+              </button>
             </>
           )}
         </div>
@@ -1116,7 +884,7 @@ export default function App() {
               <span className="bg-brand-red/20 px-2 py-0.5 rounded font-extrabold uppercase text-[9px] text-zinc-100 hidden sm:inline">Map Offline (Hidden)</span>
             </div>
 
-            <header className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-[#222] pb-6">
+            <header className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-border-dark pb-6">
               <div>
                 <h2 className="text-2xl font-extrabold font-display text-text-bright flex items-center gap-2 tracking-tight">
                   <Flame className="w-7 h-7 text-brand-red animate-bounce" />
@@ -1130,7 +898,7 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => setIsEmergencyModalOpen(false)}
-                className="px-4 py-2 bg-[#1A1A1A] border border-zinc-800 text-text-muted hover:text-white rounded-xl text-xs font-bold transition cursor-pointer"
+                className="px-4 py-2 bg-surface-dark border border-border-dark text-text-muted hover:text-text-bright rounded-xl text-xs font-bold transition cursor-pointer"
               >
                 ← Cancel & Return to Map
               </button>
@@ -1152,7 +920,7 @@ export default function App() {
                     placeholder="e.g. Sandra Bullock"
                     value={formPatientName}
                     onChange={(e) => setFormPatientName(e.target.value)}
-                    className="w-full bg-[#18181A] border border-[#222] focus:border-brand-red focus:outline-none focus:ring-1 focus:ring-brand-red rounded-xl px-4 py-3 text-sm text-text-bright transition"
+                    className="w-full bg-[#18181A] border border-border-dark focus:border-brand-red focus:outline-none focus:ring-1 focus:ring-brand-red rounded-xl px-4 py-3 text-sm text-text-bright transition"
                   />
                 </div>
 
@@ -1166,7 +934,7 @@ export default function App() {
                     <select
                       value={formBloodNeeded}
                       onChange={(e: any) => setFormBloodNeeded(e.target.value)}
-                      className="w-full bg-[#18181A] border border-[#222] focus:border-brand-red focus:outline-none rounded-xl px-3 py-3 text-sm text-text-bright cursor-pointer"
+                      className="w-full bg-[#18181A] border border-border-dark focus:border-brand-red focus:outline-none rounded-xl px-3 py-3 text-sm text-text-bright cursor-pointer"
                     >
                       {BLOOD_GROUPS.map((bg) => (
                         <option key={bg} value={bg}>{bg}</option>
@@ -1185,7 +953,7 @@ export default function App() {
                       max="10"
                       value={formUnitsNeeded}
                       onChange={(e) => setFormUnitsNeeded(Number(e.target.value))}
-                      className="w-full bg-[#18181A] border border-[#222] focus:border-brand-red focus:outline-none rounded-xl px-4 py-3 text-sm text-text-bright"
+                      className="w-full bg-[#18181A] border border-border-dark focus:border-brand-red focus:outline-none rounded-xl px-4 py-3 text-sm text-text-bright"
                     />
                   </div>
                 </div>
@@ -1202,7 +970,7 @@ export default function App() {
                     placeholder="e.g. Apollo Hospital, Greams Road"
                     value={formHospitalName}
                     onChange={(e) => setFormHospitalName(e.target.value)}
-                    className="w-full bg-[#18181A] border border-[#222] focus:border-brand-red focus:outline-none focus:ring-1 focus:ring-brand-red rounded-xl px-4 py-3 text-sm text-text-bright transition"
+                    className="w-full bg-[#18181A] border border-border-dark focus:border-brand-red focus:outline-none focus:ring-1 focus:ring-brand-red rounded-xl px-4 py-3 text-sm text-text-bright transition"
                   />
                 </div>
 
@@ -1218,7 +986,7 @@ export default function App() {
                     placeholder="e.g. ICU Block B, 2nd Floor, Ward 4"
                     value={formHospitalAddress}
                     onChange={(e) => setFormHospitalAddress(e.target.value)}
-                    className="w-full bg-[#18181A] border border-[#222] focus:border-brand-red focus:outline-none focus:ring-1 focus:ring-brand-red rounded-xl px-4 py-3 text-sm text-text-bright transition"
+                    className="w-full bg-[#18181A] border border-border-dark focus:border-brand-red focus:outline-none focus:ring-1 focus:ring-brand-red rounded-xl px-4 py-3 text-sm text-text-bright transition"
                   />
                 </div>
 
@@ -1231,7 +999,7 @@ export default function App() {
                   <select
                     value={formCity}
                     onChange={(e: any) => setFormCity(e.target.value)}
-                    className="w-full bg-[#18181A] border border-[#222] focus:border-brand-red focus:outline-none rounded-xl px-3 py-3 text-sm text-text-bright cursor-pointer"
+                    className="w-full bg-[#18181A] border border-border-dark focus:border-brand-red focus:outline-none rounded-xl px-3 py-3 text-sm text-text-bright cursor-pointer"
                   >
                     <option value="Chennai">Chennai</option>
                     <option value="Mumbai">Mumbai</option>
@@ -1253,7 +1021,7 @@ export default function App() {
                   <select
                     value={formUrgency}
                     onChange={(e: any) => setFormUrgency(e.target.value)}
-                    className="w-full bg-[#18181A] border border-[#222] focus:border-brand-red focus:outline-none rounded-xl px-3 py-3 text-sm text-text-bright cursor-pointer"
+                    className="w-full bg-[#18181A] border border-border-dark focus:border-brand-red focus:outline-none rounded-xl px-3 py-3 text-sm text-text-bright cursor-pointer"
                   >
                     <option value="Critical">Critical (Immediate life jeopardy)</option>
                     <option value="Urgent">Urgent (Aid required within 24 hours)</option>
@@ -1273,7 +1041,7 @@ export default function App() {
                     placeholder="e.g. Sandeep Nathan"
                     value={formRequesterName}
                     onChange={(e) => setFormRequesterName(e.target.value)}
-                    className="w-full bg-[#18181A] border border-[#222] focus:border-brand-red focus:outline-none focus:ring-1 focus:ring-brand-red rounded-xl px-4 py-3 text-sm text-text-bright transition"
+                    className="w-full bg-[#18181A] border border-border-dark focus:border-brand-red focus:outline-none focus:ring-1 focus:ring-brand-red rounded-xl px-4 py-3 text-sm text-text-bright transition"
                   />
                 </div>
 
@@ -1289,7 +1057,7 @@ export default function App() {
                     placeholder="+91 94440 XXXXX"
                     value={formRequesterPhone}
                     onChange={(e) => setFormRequesterPhone(e.target.value)}
-                    className="w-full bg-[#18181A] border border-[#222] focus:border-brand-red focus:outline-none focus:ring-1 focus:ring-brand-red rounded-xl px-4 py-3 text-sm text-text-bright transition"
+                    className="w-full bg-[#18181A] border border-border-dark focus:border-brand-red focus:outline-none focus:ring-1 focus:ring-brand-red rounded-xl px-4 py-3 text-sm text-text-bright transition"
                   />
                 </div>
 
@@ -1306,7 +1074,7 @@ export default function App() {
                   onChange={(e) => setFormNotes(e.target.value)}
                   rows={4}
                   maxLength={180}
-                  className="w-full bg-[#18181A] border border-[#222] focus:border-brand-red focus:outline-none focus:ring-1 focus:ring-brand-red rounded-xl px-4 py-3 text-sm text-text-bright resize-none transition"
+                  className="w-full bg-[#18181A] border border-border-dark focus:border-brand-red focus:outline-none focus:ring-1 focus:ring-brand-red rounded-xl px-4 py-3 text-sm text-text-bright resize-none transition"
                 />
               </div>
 
@@ -1330,7 +1098,7 @@ export default function App() {
                 <button
                   type="button"
                   onClick={() => setIsEmergencyModalOpen(false)}
-                  className="w-full sm:w-auto px-6 py-3.5 bg-[#1F1F22] hover:bg-zinc-800 text-text-bright font-bold text-xs rounded-xl cursor-pointer transition border border-zinc-800 text-center"
+                  className="w-full sm:w-auto px-6 py-3.5 bg-[#1F1F22] hover:bg-surface-dark text-text-bright font-bold text-xs rounded-xl cursor-pointer transition border border-border-dark text-center"
                 >
                   Cancel & Return
                 </button>
@@ -1362,7 +1130,7 @@ export default function App() {
                         className={`py-1.5 px-1 text-center rounded-lg border text-xs font-bold font-display transition ${
                           searchBlood === "All"
                             ? "bg-brand-red text-white border-brand-red shadow"
-                            : "bg-surface-dark border-[#222] hover:border-zinc-700 text-text-muted"
+                            : "bg-surface-dark border-border-dark hover:border-border-dark text-text-muted"
                         }`}
                       >
                         All
@@ -1375,7 +1143,7 @@ export default function App() {
                           className={`py-1.5 px-1 text-center rounded-lg border text-xs font-bold font-display transition ${
                             searchBlood === bg
                               ? `${getGroupSelectorBadge(bg)} border-transparent shadow`
-                              : "bg-surface-dark border-[#222] hover:border-zinc-700 text-text-muted"
+                              : "bg-surface-dark border-border-dark hover:border-border-dark text-text-muted"
                           }`}
                         >
                           {bg}
@@ -1395,7 +1163,7 @@ export default function App() {
                         onChange={(e) => setSearchCity(e.target.value)}
                         className="w-full bg-surface-dark border border-border-dark rounded-xl px-3.5 py-2 text-xs text-text-bright placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
                       />
-                      <MapPin className="absolute right-3.5 top-2.5 w-4 h-4 text-zinc-600" />
+                      <MapPin className="absolute right-3.5 top-2.5 w-4 h-4 text-text-subtle" />
                     </div>
                   </div>
 
@@ -1456,7 +1224,7 @@ export default function App() {
                       onClick={() => setMapToggle(false)}
                       className={`px-3 py-1.5 rounded-lg text-xs font-semibold select-none border cursor-pointer transition ${
                         !mapToggle
-                          ? "bg-[#252525] border-zinc-600 text-white font-bold"
+                          ? "bg-surface-dark border-border-dark text-white font-bold"
                           : "bg-surface-dark border-border-dark text-text-muted hover:text-text-bright"
                       }`}
                     >
@@ -1467,7 +1235,7 @@ export default function App() {
                       onClick={() => setMapToggle(true)}
                       className={`px-3 py-1.5 rounded-lg text-xs font-semibold select-none border cursor-pointer transition ${
                         mapToggle
-                          ? "bg-[#252525] border-zinc-600 text-white font-bold"
+                          ? "bg-surface-dark border-border-dark text-white font-bold"
                           : "bg-surface-dark border-border-dark text-text-muted hover:text-text-bright"
                       }`}
                     >
@@ -1505,7 +1273,7 @@ export default function App() {
                           <div
                             key={donor.uid}
                             id={`donor-card-${donor.uid}`}
-                            className="bg-card-dark border border-border-dark p-4 rounded-2xl flex flex-col justify-between hover:border-zinc-700 transition duration-300 shadow-xl"
+                            className="bg-card-dark border border-border-dark p-4 rounded-2xl flex flex-col justify-between hover:border-border-dark transition duration-300 shadow-xl"
                           >
                             <div>
                               {/* Header profile details */}
@@ -1515,7 +1283,7 @@ export default function App() {
                                     src={donor.profilePhotoUrl || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=200"}
                                     alt={donor.fullName}
                                     referrerPolicy="no-referrer"
-                                    className="w-10 h-10 rounded-full object-cover border border-zinc-800"
+                                    className="w-10 h-10 rounded-full object-cover border border-border-dark"
                                   />
                                   <div>
                                     <h4 className="font-bold text-text-bright text-sm tracking-tight leading-tight">{donor.fullName}</h4>
@@ -1538,7 +1306,7 @@ export default function App() {
                                 </div>
                                 <div>
                                   <span className="text-text-subtle font-bold uppercase tracking-wider block">Availability</span>
-                                  <span className={`inline-flex items-center font-semibold ${donor.isAvailable ? "text-emerald-400" : "text-zinc-500"}`}>
+                                  <span className={`inline-flex items-center font-semibold ${donor.isAvailable ? "text-emerald-400" : "text-text-subtle"}`}>
                                     <span className={`w-1.5 h-1.5 rounded-full mr-1.5 ${donor.isAvailable ? "bg-emerald-500 animate-pulse" : "bg-zinc-500"}`}></span>
                                     {donor.isAvailable ? "Ready" : "Away"}
                                   </span>
@@ -1556,8 +1324,8 @@ export default function App() {
                               onClick={() => handleInitiateContact(donor)}
                               className={`w-full mt-3 py-2.5 rounded-xl text-xs font-bold font-display cursor-pointer tracking-wider uppercase transition flex items-center justify-center gap-1.5 ${
                                 donor.isAvailable
-                                  ? "bg-[#1E1E1E] border border-border-dark hover:border-zinc-500 text-text-bright"
-                                  : "bg-zinc-900 border-transparent text-zinc-600 cursor-not-allowed"
+                                  ? "bg-surface-dark border border-border-dark hover:border-zinc-500 text-text-bright"
+                                  : "bg-surface-dark border-transparent text-text-subtle cursor-not-allowed"
                               }`}
                             >
                               <Phone className="w-3.5 h-3.5" />
@@ -1600,7 +1368,7 @@ export default function App() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {emergencies.length === 0 ? (
                 <div className="col-span-full text-center bg-card-dark border border-border-dark p-12 rounded-2xl">
-                  <Droplet className="w-8 h-8 text-zinc-600 mx-auto mb-3" />
+                  <Droplet className="w-8 h-8 text-text-subtle mx-auto mb-3" />
                   <h4 className="font-bold text-text-bright text-base">No active medical requirements reported</h4>
                   <p className="text-text-muted text-xs mt-1">If there is an active emergency requiring blood compatibility, submit standard details using the button.</p>
                 </div>
@@ -1613,9 +1381,9 @@ export default function App() {
                     <div
                       key={req.requestId}
                       id={`emergency-card-${req.requestId}`}
-                      className={`bg-card-dark border rounded-2xl p-5 hover:border-zinc-700 transition flex flex-col justify-between shadow-xl relative overflow-hidden ${
+                      className={`bg-card-dark border rounded-2xl p-5 hover:border-border-dark transition flex flex-col justify-between shadow-xl relative overflow-hidden ${
                         req.status !== "Active"
-                          ? "border-zinc-900 opacity-60"
+                          ? "border-border-dark opacity-60"
                           : isUrgent
                           ? "border-red-900/60 shadow-red-950/10"
                           : "border-border-dark"
@@ -1686,11 +1454,11 @@ export default function App() {
                         </div>
 
                         {/* Patient & Additional information */}
-                        <div className="bg-[#1C1C1C] border border-[#262626] p-3 rounded-xl text-xs space-y-2 mb-4">
+                        <div className="bg-surface-dark border border-[#262626] p-3 rounded-xl text-xs space-y-2 mb-4">
                           <p className="text-text-muted">
                             <strong className="text-text-bright text-[11px]">Patient Name:</strong> {req.patientName}
                           </p>
-                          <blockquote className="text-text-muted text-[11px] italic leading-relaxed border-l-2 border-zinc-700 pl-2">
+                          <blockquote className="text-text-muted text-[11px] italic leading-relaxed border-l-2 border-border-dark pl-2">
                             "{req.additionalNotes}"
                           </blockquote>
                           <p className="text-[10px] text-text-subtle">
@@ -1717,7 +1485,7 @@ export default function App() {
                               )}`}
                               target="_blank"
                               rel="noreferrer"
-                              className="bg-surface-dark border border-border-dark hover:border-zinc-700 p-2.5 rounded-xl text-[#25D366] transition flex items-center justify-center shrink-0 cursor-pointer"
+                              className="bg-surface-dark border border-border-dark hover:border-border-dark p-2.5 rounded-xl text-[#25D366] transition flex items-center justify-center shrink-0 cursor-pointer"
                               title="Broadcast SOS on WhatsApp"
                             >
                               <Share2 className="w-4 h-4" />
@@ -1830,8 +1598,8 @@ export default function App() {
                       {/* Log-out */}
                       <button
                         id="logout-btn"
-                        onClick={() => store.logOut()}
-                        className="w-full mt-4 flex items-center justify-center gap-1.5 bg-surface-dark hover:bg-zinc-800 text-zinc-400 py-2 rounded-xl text-xs font-semibold cursor-pointer transition border border-border-dark"
+                        onClick={() => setShowLogoutConfirm(true)}
+                        className="w-full mt-4 flex items-center justify-center gap-1.5 bg-surface-dark hover:bg-surface-dark text-text-muted py-2 rounded-xl text-xs font-semibold cursor-pointer transition border border-border-dark"
                       >
                         <LogOut className="w-4 h-4" />
                         <span>Sign Out Profile</span>
@@ -1839,7 +1607,7 @@ export default function App() {
                     </div>
                   ) : (
                     <div className="text-center py-4 text-xs space-y-3">
-                      <Lock className="w-8 h-8 text-zinc-600 mx-auto" />
+                      <Lock className="w-8 h-8 text-text-subtle mx-auto" />
                       <div>
                         <p className="font-bold text-text-bright">Anonymous Preview Access</p>
                         <p className="text-text-muted">Choose a pre-seeded donor/seeker profile from the simulator panel at the bottom to explore interactive chat threads!</p>
@@ -1885,7 +1653,7 @@ export default function App() {
                           <div className="w-10 h-10 rounded-full bg-emerald-500/10 flex items-center justify-center font-bold text-emerald-400 text-lg">✓</div>
                           <div>
                             <span className="text-xs uppercase tracking-wide font-extrabold text-emerald-400 block">Your Donor Profile is Active</span>
-                            <span className="text-[11px] text-text-muted">You are visible in nearby search directories filtering for blood group: <strong className="text-white bg-zinc-800 px-1.5 py-0.5 rounded font-mono">{myProfile.bloodGroup}</strong></span>
+                            <span className="text-[11px] text-text-muted">You are visible in nearby search directories filtering for blood group: <strong className="text-white bg-surface-dark px-1.5 py-0.5 rounded font-mono">{myProfile.bloodGroup}</strong></span>
                           </div>
                         </div>
 
@@ -1898,7 +1666,7 @@ export default function App() {
                             className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
                               myProfile.isAvailable 
                                 ? "bg-emerald-500 text-black hover:bg-emerald-400" 
-                                : "bg-[#252525] text-zinc-500 hover:text-white"
+                                : "bg-surface-dark text-text-subtle hover:text-text-bright"
                             }`}
                           >
                             {myProfile.isAvailable ? "Ready to Donate" : "Away / Cooldown"}
@@ -1965,26 +1733,28 @@ export default function App() {
                             store.logMockDonation();
                             alert("Success! Your global donation count has been incremented.");
                           }}
-                          className="px-4 py-2 bg-brand-red/10 border border-brand-red/30 hover:bg-brand-red text-brand-red hover:text-white rounded-lg text-xs font-semibold cursor-pointer transition"
+                          className="px-4 py-2 bg-brand-red/10 border border-brand-red/30 hover:bg-brand-red text-brand-red hover:text-text-bright rounded-lg text-xs font-semibold cursor-pointer transition"
                         >
                           Log Successful Donation Session
                         </button>
                       </div>
 
-                      {/* Remove my profile */}
-                      <div className="pt-4 border-t border-border-dark flex items-center justify-between">
-                        <div>
-                          <p className="text-xs font-bold text-text-bright leading-tight">Remove Registered Profile card</p>
-                          <p className="text-[10px] text-text-subtle">Remove yourself from the mapping directory feed entirely.</p>
+                      {/* Remove my profile - Only Admin can deregister */}
+                      {currentUser?.role === "admin" && (
+                        <div className="pt-4 border-t border-border-dark flex items-center justify-between">
+                          <div>
+                            <p className="text-xs font-bold text-text-bright leading-tight">Remove Registered Profile card</p>
+                            <p className="text-[10px] text-text-subtle">Remove yourself from the mapping directory feed entirely.</p>
+                          </div>
+                          <button
+                            id="deregister-donor-btn"
+                            onClick={() => setShowDeregisterModal(true)}
+                            className="text-xs font-semibold hover:text-text-bright px-3.5 py-1.5 rounded-lg border border-red-950 text-red-500 hover:bg-red-950/20 cursor-pointer transition"
+                          >
+                            Deregister Card
+                          </button>
                         </div>
-                        <button
-                          id="deregister-donor-btn"
-                          onClick={() => setShowDeregisterModal(true)}
-                          className="text-xs font-semibold hover:text-white px-3.5 py-1.5 rounded-lg border border-red-950 text-red-500 hover:bg-red-950/20 cursor-pointer transition"
-                        >
-                          Deregister Card
-                        </button>
-                      </div>
+                      )}
                     </div>
                   ) : (
                     /* Build registration form if not registered as donor */
@@ -2089,7 +1859,7 @@ export default function App() {
                                 );
                               }
                             }}
-                            className="w-full bg-surface-dark hover:bg-zinc-800 text-[11px] text-text-bright py-2 rounded-xl transition border border-border-dark cursor-pointer flex items-center justify-center gap-1"
+                            className="w-full bg-surface-dark hover:bg-surface-dark text-[11px] text-text-bright py-2 rounded-xl transition border border-border-dark cursor-pointer flex items-center justify-center gap-1"
                           >
                             <Globe className="w-3.5 h-3.5 text-orange-500" /> Retrieve My GPS coordinates
                           </button>
@@ -2110,7 +1880,7 @@ export default function App() {
                     </form>
                   )
                 ) : (
-                  <div className="bg-[#1C1C1C] border border-border-dark p-8 rounded-2xl text-center space-y-4">
+                  <div className="bg-surface-dark border border-border-dark p-8 rounded-2xl text-center space-y-4">
                     <UserPlus className="w-10 h-10 text-rose-500 mx-auto" />
                     <h4 className="font-extrabold text-base text-text-bright font-display">DASHBOARD LOCKED IN Sandbox</h4>
                     <p className="text-xs text-text-muted max-w-md mx-auto leading-relaxed">
@@ -2180,8 +1950,8 @@ export default function App() {
                             onClick={() => setActiveChatId(chat.chatId)}
                             className={`p-3 rounded-xl border text-left cursor-pointer transition flex items-center justify-between ${
                               isActiveChat
-                                ? "bg-zinc-800/80 border-zinc-700 text-white"
-                                : "bg-[#161616] border-border-dark hover:border-zinc-700 text-text-muted"
+                                ? "bg-surface-dark/80 border-border-dark text-white"
+                                : "bg-surface-dark border-border-dark hover:border-border-dark text-text-muted"
                             }`}
                           >
                             <div className="flex-grow">
@@ -2278,7 +2048,7 @@ export default function App() {
                         }
 
                         return (
-                          <div className="text-[10px] text-zinc-500 font-mono italic max-w-sm text-right leading-normal bg-[#1C1C1C] border border-border-dark px-2 py-1 rounded">
+                          <div className="text-[10px] text-text-subtle font-mono italic max-w-sm text-right leading-normal bg-surface-dark border border-border-dark px-2 py-1 rounded">
                             Phone hidden until Donor accepts contact request.
                           </div>
                         );
@@ -2294,7 +2064,7 @@ export default function App() {
                         if (isSys) {
                           return (
                             <div key={m.messageId} className="text-center">
-                              <span className="inline-block bg-zinc-900 border border-[#222] text-[#888] text-[10px] font-semibold px-3 py-1 rounded-full font-mono">
+                              <span className="inline-block bg-surface-dark border border-border-dark text-text-muted text-[10px] font-semibold px-3 py-1 rounded-full font-mono">
                                 🛡️ {m.text}
                               </span>
                             </div>
@@ -2310,13 +2080,13 @@ export default function App() {
                               className={`max-w-[70%] rounded-2xl p-3.5 pr-5 shadow-lg relative text-xs leading-relaxed ${
                                 isMe
                                   ? "bg-brand-red text-white rounded-tr-none"
-                                  : "bg-[#1C1C1C] text-[#E0E0E0] border border-border-dark rounded-tl-none"
+                                  : "bg-surface-dark text-[#E0E0E0] border border-border-dark rounded-tl-none"
                               }`}
                             >
                               <p>{m.text}</p>
                               <span
                                 className={`text-[8px] block text-right mt-1.5 font-mono ${
-                                  isMe ? "text-zinc-300" : "text-text-subtle"
+                                  isMe ? "text-text-bright" : "text-text-subtle"
                                 }`}
                               >
                                 {new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -2347,7 +2117,7 @@ export default function App() {
                   </>
                 ) : (
                   <div className="flex flex-col items-center justify-center text-center space-y-3 h-full py-16">
-                    <MessageSquare className="w-12 h-12 text-zinc-600 animate-pulse" />
+                    <MessageSquare className="w-12 h-12 text-text-subtle animate-pulse" />
                     <div>
                       <h4 className="font-bold text-text-bright font-display text-sm uppercase tracking-wider">No Active Conversation Select</h4>
                       <p className="text-text-muted text-xs max-w-sm mt-1 mx-auto leading-normal">
@@ -2438,7 +2208,7 @@ export default function App() {
                     {adminRecentDonorSearch ? (
                       <button
                         onClick={() => setAdminRecentDonorSearch("")}
-                        className="absolute right-3 text-xs text-amber-400 hover:text-white font-mono font-bold flex items-center gap-1 cursor-pointer bg-amber-500/10 hover:bg-amber-500/20 px-2 py-0.5 rounded transition"
+                        className="absolute right-3 text-xs text-amber-400 hover:text-text-bright font-mono font-bold flex items-center gap-1 cursor-pointer bg-amber-500/10 hover:bg-amber-500/20 px-2 py-0.5 rounded transition"
                       >
                         <X className="w-3 h-3" />
                         <span>Clear</span>
@@ -2475,7 +2245,7 @@ export default function App() {
                           <p className="text-[10px] text-text-subtle">Try searching by full name, blood group (e.g. O+, B+), or city name.</p>
                           <button
                             onClick={() => setAdminRecentDonorSearch("")}
-                            className="mt-2 text-[10px] text-brand-red hover:text-white underline cursor-pointer font-bold font-mono"
+                            className="mt-2 text-[10px] text-brand-red hover:text-text-bright underline cursor-pointer font-bold font-mono"
                           >
                             Reset Search Filter
                           </button>
@@ -2552,7 +2322,7 @@ export default function App() {
                                 <button
                                   id={`admin-donor-pass-link-${d.uid}`}
                                   onClick={() => setSelectedPassDonor(d)}
-                                  className="text-amber-400 hover:text-white font-bold font-mono underline cursor-pointer flex items-center gap-1 shrink-0 ml-2"
+                                  className="text-amber-400 hover:text-text-bright font-bold font-mono underline cursor-pointer flex items-center gap-1 shrink-0 ml-2"
                                 >
                                   <Award className="w-3 h-3" />
                                   <span>View Donor Pass</span>
@@ -2567,6 +2337,9 @@ export default function App() {
                 </div>
               </div>
             )}
+
+            {/* RECHARTS DONOR REGISTRATION TREND ANALYTICS */}
+            <DonorRegistrationTrendChart donors={donors} />
 
             {/* Donor moderation list */}
             <div className="bg-card-dark border border-border-dark rounded-2xl p-5 shadow-xl space-y-4">
@@ -2585,23 +2358,24 @@ export default function App() {
                     </tr>
                   </thead>
                   <tbody>
-                    {donors.map((d) => (
-                      <tr key={d.uid} id={`admin-donor-row-${d.uid}`} className="border-b border-border-dark/30 text-text-bright hover:bg-surface-dark/40">
+                    <AnimatePresence>
+                      {donors.map((d) => (
+                      <motion.tr layout initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, x: -100, scaleY: 0.5, transition: { duration: 0.3 } }} key={d.uid} id={`admin-donor-row-${d.uid}`} className="border-b border-border-dark/30 text-text-bright hover:bg-surface-dark/40">
                         <td className="py-2.5 px-3 font-semibold">{d.fullName}</td>
                         <td className="py-2.5 px-3 font-bold font-display text-brand-red">{d.bloodGroup}</td>
                         <td className="py-2.5 px-3 text-text-muted">{d.city}</td>
                         <td className="py-2.5 px-3 font-mono text-center">{d.donationCount}</td>
                         <td className="py-2.5 px-3">
-                          <span className={`inline-flex items-center ${d.isAvailable ? "text-emerald-400" : "text-zinc-500"}`}>
+                          <span className={`inline-flex items-center ${d.isAvailable ? "text-emerald-400" : "text-text-subtle"}`}>
                             {d.isAvailable ? "Online" : "Offline"}
                           </span>
                         </td>
                         <td className="text-right py-2.5 px-3">
                           <button
                             id={`admin-ban-donor-${d.uid}`}
-                            onClick={() => {
+                            onClick={async () => {
                               if (confirm("Ban and remove this donor profile?")) {
-                                store.deleteDonor(d.uid);
+                                await store.deleteDonor(d.uid);
                               }
                             }}
                             className="text-[10px] font-bold text-red-500 hover:text-red-400 cursor-pointer p-1"
@@ -2609,8 +2383,9 @@ export default function App() {
                             Remove Card
                           </button>
                         </td>
-                      </tr>
+                      </motion.tr>
                     ))}
+                    </AnimatePresence>
                   </tbody>
                 </table>
               </div>
@@ -2642,10 +2417,11 @@ export default function App() {
                       </tr>
                     </thead>
                     <tbody>
+                    <AnimatePresence>
                       {allUsers.map((u) => {
                         const isSelf = currentUser?.uid === u.uid;
                         return (
-                          <tr key={u.uid} id={`admin-user-row-${u.uid}`} className="border-b border-border-dark/40 text-text-bright hover:bg-surface-dark/30">
+                          <motion.tr layout initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, x: -100, scaleY: 0.5, transition: { duration: 0.3 } }} key={u.uid} id={`admin-user-row-${u.uid}`} className="border-b border-border-dark/40 text-text-bright hover:bg-surface-dark/30">
                             <td className="py-2 px-1">
                               <span className="font-semibold block leading-tight">{u.fullName}</span>
                               <span className="text-[9px] text-text-subtle font-mono">{u.uid}</span>
@@ -2662,25 +2438,26 @@ export default function App() {
                             </td>
                             <td className="text-right py-2 px-1">
                               {isSelf ? (
-                                <span className="text-[9px] text-zinc-500 font-mono italic">Self</span>
+                                <span className="text-[9px] text-text-subtle font-mono italic">Self</span>
                               ) : (
                                 <button
                                   id={`admin-delete-user-${u.uid}`}
-                                  onClick={() => {
+                                  onClick={async () => {
                                     if (confirm(`Are you sure you want to permanently remove registered user account "${u.fullName}" (${u.email})?`)) {
-                                      store.deleteUser(u.uid);
+                                      await store.deleteUser(u.uid);
                                     }
                                   }}
-                                  className="text-red-500 hover:text-white bg-red-500/10 hover:bg-red-600 border border-red-500/30 px-2 py-0.5 rounded text-[10px] font-bold transition cursor-pointer"
+                                  className="text-red-500 hover:text-text-bright bg-red-500/10 hover:bg-red-600 border border-red-500/30 px-2 py-0.5 rounded text-[10px] font-bold transition cursor-pointer"
                                 >
                                   Remove
                                 </button>
                               )}
                             </td>
-                          </tr>
+                          </motion.tr>
                         );
                       })}
-                    </tbody>
+                    </AnimatePresence>
+                  </tbody>
                   </table>
                 </div>
               </div>
@@ -2691,18 +2468,19 @@ export default function App() {
                 <div className="max-h-[220px] overflow-y-auto">
                   <table className="w-full text-xs text-left">
                     <thead>
-                      <tr className="border-b border-zinc-800 text-text-subtle font-mono text-[9px]">
+                      <tr className="border-b border-border-dark text-text-subtle font-mono text-[9px]">
                         <th className="py-2">Hospital</th>
                         <th className="py-2">Status</th>
                         <th className="text-right py-2">Sync Action</th>
                       </tr>
                     </thead>
                     <tbody>
+                    <AnimatePresence>
                       {emergencies.map((e) => (
-                        <tr key={e.requestId} id={`admin-req-row-${e.requestId}`} className="border-b border-zinc-900 text-text-bright hover:bg-surface-dark/20">
+                        <motion.tr layout initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, x: -100, scaleY: 0.5, transition: { duration: 0.3 } }} key={e.requestId} id={`admin-req-row-${e.requestId}`} className="border-b border-border-dark text-text-bright hover:bg-surface-dark/20">
                           <td className="py-2 font-medium truncate max-w-[120px]">{e.hospitalName}</td>
                           <td className="py-2 text-[10px]">
-                            <span className={e.status === "Active" ? "text-amber-500 font-bold" : "text-zinc-600"}>{e.status}</span>
+                            <span className={e.status === "Active" ? "text-amber-500 font-bold" : "text-text-subtle"}>{e.status}</span>
                           </td>
                           <td className="text-right py-2">
                             {e.status === "Active" ? (
@@ -2717,15 +2495,16 @@ export default function App() {
                               <button
                                 id={`admin-delete-req-${e.requestId}`}
                                 onClick={() => store.deleteRequest(e.requestId)}
-                                className="text-zinc-500 hover:text-white p-1 text-[10px]"
+                                className="text-text-subtle hover:text-text-bright p-1 text-[10px]"
                               >
                                 Clean
                               </button>
                             )}
                           </td>
-                        </tr>
+                        </motion.tr>
                       ))}
-                    </tbody>
+                    </AnimatePresence>
+                  </tbody>
                   </table>
                 </div>
               </div>
@@ -2749,7 +2528,7 @@ export default function App() {
                   ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       {notifications.map((n) => (
-                        <div key={n.id} className="bg-[#101012] border border-[#222] p-4 rounded-xl space-y-2.5 relative">
+                        <div key={n.id} className="bg-[#101012] border border-border-dark p-4 rounded-xl space-y-2.5 relative">
                           <div className="flex items-start justify-between gap-2 border-b border-[#1A1A1E] pb-2">
                             <span className={`text-[9px] font-mono px-2 py-0.5 rounded font-black uppercase ${
                               n.type === "SMS"
@@ -2760,17 +2539,17 @@ export default function App() {
                             }`}>
                               {n.type === "SMS" ? "📲 SIM_CELLULAR_SMS" : n.type === "Email" ? "✉️ SMTP_EMAIL" : "📌 INAP_BROADCAST"}
                             </span>
-                            <span className="text-[9px] font-mono text-zinc-500">{n.timestamp}</span>
+                            <span className="text-[9px] font-mono text-text-subtle">{n.timestamp}</span>
                           </div>
                           
                           <div className="space-y-1">
-                            <div className="text-[11px] font-extrabold text-zinc-300">{n.title}</div>
-                            <p className="text-[10px] text-zinc-400 leading-relaxed font-sans">{n.message}</p>
+                            <div className="text-[11px] font-extrabold text-text-bright">{n.title}</div>
+                            <p className="text-[10px] text-text-muted leading-relaxed font-sans">{n.message}</p>
                           </div>
 
                           <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 border-t border-[#18181B] pt-2 mt-1">
-                            <div className="text-[9px] font-mono text-zinc-400 flex items-center gap-1">
-                              <span className="font-bold text-zinc-500 uppercase text-[8px] bg-zinc-800/50 px-1 py-0.2 rounded">To:</span>
+                            <div className="text-[9px] font-mono text-text-muted flex items-center gap-1">
+                              <span className="font-bold text-text-subtle uppercase text-[8px] bg-surface-dark/50 px-1 py-0.2 rounded">To:</span>
                               <span className="truncate max-w-[150px]">{n.recipient}</span>
                             </div>
                             <span className="text-[9px] font-mono text-emerald-400 bg-emerald-950/20 border border-emerald-900/30 px-1.5 py-0.5 rounded shrink-0 self-start sm:self-auto">
@@ -2780,6 +2559,165 @@ export default function App() {
                         </div>
                       ))}
                     </div>
+                  )}
+                </div>
+              </div>
+
+              {/* ADMINISTRATIVE ACTION & ACCOUNTABILITY AUDIT LOG */}
+              <div id="admin-action-audit-log-section" className="bg-card-dark border border-border-dark p-5 sm:p-6 rounded-2xl shadow-xl space-y-4 col-span-1 md:col-span-2">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-border-dark pb-3">
+                  <div>
+                    <h4 className="text-sm font-bold font-display text-amber-500 uppercase tracking-wider flex items-center gap-2">
+                      <ClipboardList className="w-4 h-4 text-amber-500" />
+                      <span>Administrative Action & Accountability Audit Log</span>
+                    </h4>
+                    <p className="text-xs text-text-muted mt-0.5">
+                      Chronological, immutable audit trail tracking administrative moderation operations with admin identification and timestamps.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] bg-amber-500/10 border border-amber-500/30 text-amber-400 px-3 py-1 rounded-full font-mono font-bold uppercase">
+                      {filteredAdminLogs.length} of {adminLogs.length} Actions Logged
+                    </span>
+                    <span className="text-[10px] bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 px-2.5 py-1 rounded-full font-mono font-semibold">
+                      ✓ Synchronized
+                    </span>
+                  </div>
+                </div>
+
+                {/* Filter & Search Bar */}
+                <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between">
+                  {/* Action Category Filter Buttons */}
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {["All", "Donor Removed", "SOS Fulfilled", "User Removed", "SOS Deleted"].map((filter) => (
+                      <button
+                        key={filter}
+                        onClick={() => setAdminLogActionFilter(filter)}
+                        className={`px-3 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
+                          adminLogActionFilter === filter
+                            ? "bg-amber-500 text-black font-extrabold shadow-md shadow-amber-500/20"
+                            : "bg-surface-dark/70 text-text-muted hover:text-text-bright hover:bg-surface-dark border border-border-dark/60"
+                        }`}
+                      >
+                        {filter === "All" ? "All Actions" : filter}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Search input */}
+                  <div className="relative flex-1 sm:max-w-xs">
+                    <Search className="w-3.5 h-3.5 text-text-subtle absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                    <input
+                      type="text"
+                      value={adminLogSearchQuery}
+                      onChange={(e) => setAdminLogSearchQuery(e.target.value)}
+                      placeholder="Search action, details, admin email..."
+                      className="w-full bg-surface-dark/80 border border-border-dark focus:border-amber-500 rounded-xl pl-8 pr-8 py-1.5 text-xs text-text-bright placeholder-text-subtle focus:outline-none transition font-sans"
+                    />
+                    {adminLogSearchQuery && (
+                      <button
+                        onClick={() => setAdminLogSearchQuery("")}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-text-subtle hover:text-text-bright text-xs"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Audit Log Entries List */}
+                <div className="max-h-[380px] overflow-y-auto space-y-3 pr-1">
+                  {filteredAdminLogs.length === 0 ? (
+                    <div className="py-10 text-center bg-surface-dark/40 border border-border-dark/60 rounded-xl space-y-2">
+                      <ClipboardList className="w-8 h-8 text-text-subtle mx-auto opacity-50" />
+                      <p className="text-xs text-text-muted font-medium">
+                        {adminLogSearchQuery || adminLogActionFilter !== "All"
+                          ? `No administrative audit logs found matching criteria.`
+                          : `No administrative actions recorded yet. Moderation events like 'Donor Removed' or 'SOS Fulfilled' will be logged here automatically.`}
+                      </p>
+                      {(adminLogSearchQuery || adminLogActionFilter !== "All") && (
+                        <button
+                          onClick={() => {
+                            setAdminLogActionFilter("All");
+                            setAdminLogSearchQuery("");
+                          }}
+                          className="text-xs text-amber-400 hover:underline font-semibold"
+                        >
+                          Reset Filters
+                        </button>
+                      )}
+                    </div>
+                  ) : (
+                    filteredAdminLogs.map((log) => {
+                      const isDonorRemoved = log.action === "Donor Removed";
+                      const isSosFulfilled = log.action === "SOS Fulfilled";
+                      const isUserRemoved = log.action === "User Removed";
+                      const isSosDeleted = log.action === "SOS Deleted";
+
+                      return (
+                        <div
+                          key={log.id}
+                          id={`admin-audit-log-${log.id}`}
+                          className="bg-surface-dark/90 border border-border-dark hover:border-amber-500/30 p-4 rounded-xl space-y-2.5 transition shadow-sm"
+                        >
+                          {/* Log Header: Action Badge, Target Tag, Timestamp */}
+                          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border-dark/50 pb-2">
+                            <div className="flex items-center gap-2">
+                              <span
+                                className={`text-[10px] font-mono px-2.5 py-0.5 rounded font-black uppercase tracking-wider flex items-center gap-1.5 border ${
+                                  isDonorRemoved
+                                    ? "bg-red-500/15 text-red-400 border-red-500/30"
+                                    : isSosFulfilled
+                                    ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30"
+                                    : isUserRemoved
+                                    ? "bg-rose-500/15 text-rose-400 border-rose-500/30"
+                                    : isSosDeleted
+                                    ? "bg-amber-500/15 text-amber-400 border-amber-500/30"
+                                    : "bg-blue-500/15 text-blue-400 border-blue-500/30"
+                                }`}
+                              >
+                                {isDonorRemoved && <Trash2 className="w-3 h-3" />}
+                                {isSosFulfilled && <CheckCircle2 className="w-3 h-3" />}
+                                {isUserRemoved && <User className="w-3 h-3" />}
+                                {isSosDeleted && <AlertTriangle className="w-3 h-3" />}
+                                {!isDonorRemoved && !isSosFulfilled && !isUserRemoved && !isSosDeleted && <ShieldCheck className="w-3 h-3" />}
+                                <span>{log.action}</span>
+                              </span>
+
+                              {log.targetId && (
+                                <span className="text-[9px] font-mono bg-card-dark text-text-subtle border border-border-dark px-2 py-0.5 rounded">
+                                  Ref: {log.targetId}
+                                </span>
+                              )}
+                            </div>
+
+                            <div className="flex items-center gap-1.5 text-[10px] font-mono text-text-subtle">
+                              <Clock className="w-3 h-3 text-amber-400/80" />
+                              <span>{formatLogDate(log.timestamp)}</span>
+                            </div>
+                          </div>
+
+                          {/* Log Content / Description */}
+                          <p className="text-xs text-text-bright font-medium leading-relaxed font-sans">
+                            {log.details}
+                          </p>
+
+                          {/* Log Footer: Admin Identifier and Verification Status */}
+                          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border-dark/40 pt-2 text-[10px] font-mono">
+                            <div className="flex items-center gap-2 text-text-muted">
+                              <span className="font-bold text-text-subtle uppercase text-[9px]">Admin:</span>
+                              <span className="text-amber-400 font-semibold">{log.adminEmail}</span>
+                              <span className="text-text-subtle text-[9px]">({log.adminId})</span>
+                            </div>
+
+                            <div className="flex items-center gap-1 text-emerald-400 font-semibold text-[9px]">
+                              <Check className="w-3 h-3" />
+                              <span>Accountability Verified • Immutable</span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })
                   )}
                 </div>
               </div>
@@ -2825,8 +2763,51 @@ export default function App() {
         />
       )}
 
+      
+      {/* Logout Confirmation Modal */}
+      {showLogoutConfirm && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="bg-card-dark border border-border-dark rounded-3xl p-6 md:p-8 max-w-sm w-full shadow-2xl space-y-6 transform animate-in zoom-in-95 duration-300">
+            <div className="w-14 h-14 rounded-full bg-brand-red/10 border border-brand-red/20 flex items-center justify-center mx-auto shadow-inner">
+               <LogOut className="w-7 h-7 text-brand-red" />
+            </div>
+            <div className="text-center space-y-2">
+              <h3 className="text-xl font-extrabold text-white font-display">Confirm Logout</h3>
+              <p className="text-xs text-text-muted">Are you sure you want to log out of your HEMOLINK profile?</p>
+            </div>
+            <div className="flex items-center gap-3 pt-2">
+              <button
+                onClick={() => setShowLogoutConfirm(false)}
+                className="flex-1 py-3 bg-surface-dark hover:bg-zinc-800 text-text-bright text-xs font-bold uppercase tracking-wider rounded-xl border border-border-dark transition"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleLogout}
+                className="flex-1 py-3 bg-brand-red hover:bg-brand-red-dark text-white text-xs font-bold uppercase tracking-wider rounded-xl shadow-lg shadow-brand-red/20 transition"
+              >
+                Yes, Log Out
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Animated Logout Screen */}
+      {isLoggingOut && (
+        <div className="fixed inset-0 z-[10000] flex flex-col items-center justify-center bg-base-dark p-4 animate-in fade-in duration-500">
+           <div className="relative w-24 h-24 flex items-center justify-center mb-8">
+             <div className="absolute inset-0 border-4 border-brand-red/20 rounded-full animate-ping duration-1000"></div>
+             <div className="absolute inset-0 border-4 border-brand-red border-t-transparent rounded-full animate-spin duration-700"></div>
+             <Droplet className="w-8 h-8 text-brand-red animate-pulse" />
+           </div>
+           <h2 className="text-2xl md:text-3xl font-extrabold text-white tracking-widest font-display animate-pulse uppercase">Logging Out</h2>
+           <p className="text-text-muted text-sm mt-3 max-w-sm text-center">Securely disconnecting your profile and encrypting session data...</p>
+        </div>
+      )}
+
       {/* Human Footers info details */}
-      <footer className="border-t border-border-dark bg-[#080808] py-4 text-center text-[10px] text-text-subtle">
+      <footer className="border-t border-border-dark bg-base-dark py-4 text-center text-[10px] text-text-subtle">
         <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-4">
           <p>© 2026 HEMOLINK • Connecting donors. Saving Lifes. Crafted with precision for life preservation.</p>
           <p className="font-mono">Server node status: ONLINE (Port 3000) • ISO UTC Coordinates: 2026-06-04 14:11Z</p>

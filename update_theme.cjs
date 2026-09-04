@@ -1,4 +1,7 @@
-@import "tailwindcss";
+const fs = require('fs');
+
+// 1. Update index.css
+const css = `@import "tailwindcss";
 
 :root {
   --bg-base: #3E0202;
@@ -16,7 +19,7 @@
 }
 
 @theme {
-  --font-sans: "Inter", "DM Sans", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-sans: "DM Sans", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   --font-display: "Syne", sans-serif;
 
   --color-brand-red: #FF3B3B;
@@ -97,9 +100,22 @@
   background: var(--map-popup-bg) !important;
   border: 1px solid var(--border-color);
 }
+`;
+
+fs.writeFileSync('src/index.css', css);
+
+// 2. Remove theme toggle button and state from App.tsx
+let code = fs.readFileSync('src/App.tsx', 'utf8');
+
+// The toggle button was already removed via sed, let's just make sure.
+// Remove isDarkMode state
+code = code.replace(/const \[isDarkMode, setIsDarkMode\] = useState<boolean>\(\(\) => localStorage\.getItem\("hemolink_theme"\) !== "light"\);\n/, '');
+code = code.replace(/useEffect\(\(\) => \{\n\s*if \(isDarkMode\) \{\n\s*document\.documentElement\.classList\.remove\("light-mode"\);\n\s*localStorage\.setItem\("hemolink_theme", "dark"\);\n\s*\} else \{\n\s*document\.documentElement\.classList\.add\("light-mode"\);\n\s*localStorage\.setItem\("hemolink_theme", "light"\);\n\s*\}\n\s*\}, \[isDarkMode\]\);\n/, '');
+
+// Make sure the button is really gone
+code = code.replace(/\{\/\* Theme Toggle Button \*\/\}\s*<button[\s\S]*?<\/button>\s*\{\/\* Notification Center Trigger Bell button \*\/\}/, '{/* Notification Center Trigger Bell button */}');
+// Also remove it if it was slightly different
+code = code.replace(/\{\/\* Theme Toggle Button \*\/\}\s*<button[^>]*id="theme-toggle-btn"[\s\S]*?<\/button>/, '');
 
 
-body {
-  font-weight: 600;
-  -webkit-font-smoothing: antialiased;
-}
+fs.writeFileSync('src/App.tsx', code);

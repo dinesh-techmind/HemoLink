@@ -190,7 +190,7 @@ export default function GoogleMapsFinder({ userLat, userLng }: GoogleMapsFinderP
     address: mapsLinks[0]?.address || "GPS Position"
   };
 
-  const streetViewEmbedUrl = `https://maps.google.com/maps?q=${activeStreetViewLoc.lat},${activeStreetViewLoc.lng}&layer=c&cbll=${activeStreetViewLoc.lat},${activeStreetViewLoc.lng}&cbp=12,0,0,0,0&output=embed`;
+  const mapEmbedUrl = `https://maps.google.com/maps?q=${activeStreetViewLoc.lat},${activeStreetViewLoc.lng}&t=&z=15&ie=UTF8&iwloc=&output=embed`;
   const streetViewDirectUrl = `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${activeStreetViewLoc.lat},${activeStreetViewLoc.lng}`;
 
   return (
@@ -269,8 +269,8 @@ export default function GoogleMapsFinder({ userLat, userLng }: GoogleMapsFinderP
 
           <div className="relative w-full h-[450px] bg-black">
             <iframe
-              title="Google Street View 360 Panorama"
-              src={streetViewEmbedUrl}
+              title="Google Map View"
+              src={mapEmbedUrl}
               className="w-full h-full border-0"
               allowFullScreen
               loading="lazy"
@@ -280,7 +280,7 @@ export default function GoogleMapsFinder({ userLat, userLng }: GoogleMapsFinderP
 
           <div className="p-3 bg-surface-dark/80 text-[11px] font-mono text-text-muted flex items-center justify-between border-t border-border-dark">
             <span className="truncate">📍 Coordinates: {activeStreetViewLoc.lat.toFixed(5)}, {activeStreetViewLoc.lng.toFixed(5)}</span>
-            <span className="text-amber-400 font-bold hidden sm:inline">Pan & Drag frame to rotate 360° view</span>
+            <span className="text-amber-400 font-bold hidden sm:inline">Interactive Map View</span>
           </div>
         </div>
       )}

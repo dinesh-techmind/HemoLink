@@ -1,7 +1,28 @@
-import { Donor, EmergencyRequest, Chat, Message, AppUser, BloodGroup, Gender, UrgencyLevel, RequestStatus, GeoLocation, UserRole, AppNotification } from "../types";
+import { Donor, EmergencyRequest, Chat, Message, AppUser, BloodGroup, Gender, UrgencyLevel, RequestStatus, GeoLocation, UserRole, AppNotification, AdminAuditLog } from "../types";
 import { db, auth, handleFirestoreError, OperationType } from "./firebase";
 import { collection, onSnapshot, doc, setDoc, deleteDoc, getDocs } from "firebase/firestore";
 import { onAuthStateChanged, signInAnonymously } from "firebase/auth";
+
+// Pre-seeded audit logs for admin accountability verification
+const SEED_ADMIN_LOGS: AdminAuditLog[] = [
+  {
+    id: "log_init_1",
+    action: "System Initialized",
+    details: "Master Admin Console audit trail initiated with HIPAA & clinical accountability tracking.",
+    adminId: "admin_super",
+    adminEmail: "srini16dinesh@gmail.com",
+    timestamp: "2026-06-01T09:00:00.000Z"
+  },
+  {
+    id: "log_init_2",
+    action: "SOS Fulfilled",
+    details: "Fulfilled emergency SOS request for patient 'Pooja Iyer' (A+, 2 units at Apollo Main, Chennai).",
+    targetId: "req_demo_completed",
+    adminId: "admin_super",
+    adminEmail: "srini16dinesh@gmail.com",
+    timestamp: "2026-06-02T14:30:00.000Z"
+  }
+];
 
 // Haversine formula to compute distance in km
 export function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -131,8 +152,274 @@ const SEED_DONORS: Donor[] = [
     lastDonationDate: null,
     donationCount: 0,
     profilePhotoUrl: "https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&q=80&w=200",
-    createdAt: "2025-09-08T11:00:00Z",
-    updatedAt: "2026-04-18T10:30:00Z"
+    createdAt: "2026-08-06T11:00:00Z",
+    updatedAt: "2026-08-06T11:00:00Z"
+  },
+  {
+    uid: "donor_karthik_7",
+    fullName: "Karthik Raja",
+    email: "karthik.raja@gmail.com",
+    phone: "+91 97890 12340",
+    age: 29,
+    gender: "Male",
+    bloodGroup: "O+",
+    city: "Chennai",
+    state: "Tamil Nadu",
+    pincode: "600028",
+    location: { lat: 13.0200, lng: 80.2600 },
+    isAvailable: true,
+    lastDonationDate: "2026-08-09",
+    donationCount: 4,
+    profilePhotoUrl: "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&q=80&w=200",
+    createdAt: "2026-08-09T08:30:00Z",
+    updatedAt: "2026-08-09T08:30:00Z"
+  },
+  {
+    uid: "donor_divya_8",
+    fullName: "Divya Balan",
+    email: "divya.balan@outlook.com",
+    phone: "+91 98401 55667",
+    age: 26,
+    gender: "Female",
+    bloodGroup: "O-",
+    city: "Chennai",
+    state: "Tamil Nadu",
+    pincode: "600034",
+    location: { lat: 13.0580, lng: 80.2430 },
+    isAvailable: true,
+    lastDonationDate: null,
+    donationCount: 2,
+    profilePhotoUrl: "https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&q=80&w=200",
+    createdAt: "2026-08-12T14:15:00Z",
+    updatedAt: "2026-08-12T14:15:00Z"
+  },
+  {
+    uid: "donor_rajesh_9",
+    fullName: "Rajesh Kumar",
+    email: "rajesh.k@gmail.com",
+    phone: "+91 94440 99881",
+    age: 31,
+    gender: "Male",
+    bloodGroup: "B+",
+    city: "Bangalore",
+    state: "Karnataka",
+    pincode: "560001",
+    location: { lat: 12.9716, lng: 77.5946 },
+    isAvailable: true,
+    lastDonationDate: "2026-08-14",
+    donationCount: 5,
+    profilePhotoUrl: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&q=80&w=200",
+    createdAt: "2026-08-14T09:45:00Z",
+    updatedAt: "2026-08-14T09:45:00Z"
+  },
+  {
+    uid: "donor_swati_10",
+    fullName: "Swati Patel",
+    email: "swati.patel@gmail.com",
+    phone: "+91 91234 56789",
+    age: 25,
+    gender: "Female",
+    bloodGroup: "AB-",
+    city: "Mumbai",
+    state: "Maharashtra",
+    pincode: "400050",
+    location: { lat: 19.0596, lng: 72.8295 },
+    isAvailable: true,
+    lastDonationDate: null,
+    donationCount: 1,
+    profilePhotoUrl: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200",
+    createdAt: "2026-08-17T11:20:00Z",
+    updatedAt: "2026-08-17T11:20:00Z"
+  },
+  {
+    uid: "donor_harish_11",
+    fullName: "Harish Iyer",
+    email: "harish.iyer@gmail.com",
+    phone: "+91 98840 33221",
+    age: 34,
+    gender: "Male",
+    bloodGroup: "O+",
+    city: "Chennai",
+    state: "Tamil Nadu",
+    pincode: "600096",
+    location: { lat: 12.9698, lng: 80.2443 },
+    isAvailable: true,
+    lastDonationDate: "2026-08-19",
+    donationCount: 8,
+    profilePhotoUrl: "https://images.unsplash.com/photo-1492562080023-ab3db95bfbce?auto=format&fit=crop&q=80&w=200",
+    createdAt: "2026-08-19T16:00:00Z",
+    updatedAt: "2026-08-19T16:00:00Z"
+  },
+  {
+    uid: "donor_pooja_12",
+    fullName: "Pooja Nambiar",
+    email: "pooja.n@yahoo.com",
+    phone: "+91 97123 44556",
+    age: 28,
+    gender: "Female",
+    bloodGroup: "A-",
+    city: "Kochi",
+    state: "Kerala",
+    pincode: "682001",
+    location: { lat: 9.9312, lng: 76.2673 },
+    isAvailable: true,
+    lastDonationDate: null,
+    donationCount: 3,
+    profilePhotoUrl: "https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&q=80&w=200",
+    createdAt: "2026-08-21T10:10:00Z",
+    updatedAt: "2026-08-21T10:10:00Z"
+  },
+  {
+    uid: "donor_deepak_13",
+    fullName: "Deepak Joshi",
+    email: "deepak.joshi@gmail.com",
+    phone: "+91 98220 11223",
+    age: 30,
+    gender: "Male",
+    bloodGroup: "B-",
+    city: "Pune",
+    state: "Maharashtra",
+    pincode: "411001",
+    location: { lat: 18.5204, lng: 73.8567 },
+    isAvailable: true,
+    lastDonationDate: "2026-08-24",
+    donationCount: 4,
+    profilePhotoUrl: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=200",
+    createdAt: "2026-08-24T13:40:00Z",
+    updatedAt: "2026-08-24T13:40:00Z"
+  },
+  {
+    uid: "donor_tanvi_14",
+    fullName: "Tanvi Kulkarni",
+    email: "tanvi.k@gmail.com",
+    phone: "+91 99876 54321",
+    age: 24,
+    gender: "Female",
+    bloodGroup: "O+",
+    city: "Mumbai",
+    state: "Maharashtra",
+    pincode: "400012",
+    location: { lat: 19.0000, lng: 72.8400 },
+    isAvailable: true,
+    lastDonationDate: null,
+    donationCount: 2,
+    profilePhotoUrl: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&q=80&w=200",
+    createdAt: "2026-08-26T09:15:00Z",
+    updatedAt: "2026-08-26T09:15:00Z"
+  },
+  {
+    uid: "donor_manoj_15",
+    fullName: "Manoj Chawla",
+    email: "manoj.c@gmail.com",
+    phone: "+91 98111 22334",
+    age: 33,
+    gender: "Male",
+    bloodGroup: "AB+",
+    city: "Delhi",
+    state: "Delhi",
+    pincode: "110024",
+    location: { lat: 28.5680, lng: 77.2400 },
+    isAvailable: true,
+    lastDonationDate: "2026-08-28",
+    donationCount: 7,
+    profilePhotoUrl: "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&q=80&w=200",
+    createdAt: "2026-08-28T15:30:00Z",
+    updatedAt: "2026-08-28T15:30:00Z"
+  },
+  {
+    uid: "donor_kavita_16",
+    fullName: "Kavita Sundaram",
+    email: "kavita.s@yahoo.com",
+    phone: "+91 98410 77889",
+    age: 27,
+    gender: "Female",
+    bloodGroup: "O-",
+    city: "Chennai",
+    state: "Tamil Nadu",
+    pincode: "600041",
+    location: { lat: 12.9800, lng: 80.2600 },
+    isAvailable: true,
+    lastDonationDate: null,
+    donationCount: 3,
+    profilePhotoUrl: "https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&q=80&w=200",
+    createdAt: "2026-08-30T11:00:00Z",
+    updatedAt: "2026-08-30T11:00:00Z"
+  },
+  {
+    uid: "donor_rohit_17",
+    fullName: "Rohit Singhania",
+    email: "rohit.s@gmail.com",
+    phone: "+91 99200 88776",
+    age: 29,
+    gender: "Male",
+    bloodGroup: "A+",
+    city: "Kolkata",
+    state: "West Bengal",
+    pincode: "700020",
+    location: { lat: 22.5400, lng: 88.3500 },
+    isAvailable: true,
+    lastDonationDate: "2026-09-01",
+    donationCount: 5,
+    profilePhotoUrl: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&q=80&w=200",
+    createdAt: "2026-09-01T12:20:00Z",
+    updatedAt: "2026-09-01T12:20:00Z"
+  },
+  {
+    uid: "donor_anita_18",
+    fullName: "Anita Roy",
+    email: "anita.roy@gmail.com",
+    phone: "+91 98300 44556",
+    age: 31,
+    gender: "Female",
+    bloodGroup: "B+",
+    city: "Kolkata",
+    state: "West Bengal",
+    pincode: "700029",
+    location: { lat: 22.5180, lng: 88.3600 },
+    isAvailable: true,
+    lastDonationDate: null,
+    donationCount: 2,
+    profilePhotoUrl: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200",
+    createdAt: "2026-09-02T14:45:00Z",
+    updatedAt: "2026-09-02T14:45:00Z"
+  },
+  {
+    uid: "donor_suresh_19",
+    fullName: "Suresh Babu",
+    email: "suresh.b@gmail.com",
+    phone: "+91 94450 11224",
+    age: 35,
+    gender: "Male",
+    bloodGroup: "O+",
+    city: "Chennai",
+    state: "Tamil Nadu",
+    pincode: "600004",
+    location: { lat: 13.0330, lng: 80.2680 },
+    isAvailable: true,
+    lastDonationDate: "2026-09-03",
+    donationCount: 9,
+    profilePhotoUrl: "https://images.unsplash.com/photo-1492562080023-ab3db95bfbce?auto=format&fit=crop&q=80&w=200",
+    createdAt: "2026-09-03T10:00:00Z",
+    updatedAt: "2026-09-03T10:00:00Z"
+  },
+  {
+    uid: "donor_neha_20",
+    fullName: "Neha Kapoor",
+    email: "neha.kapoor@gmail.com",
+    phone: "+91 98100 66778",
+    age: 26,
+    gender: "Female",
+    bloodGroup: "A-",
+    city: "Delhi",
+    state: "Delhi",
+    pincode: "110016",
+    location: { lat: 28.5500, lng: 77.2000 },
+    isAvailable: true,
+    lastDonationDate: null,
+    donationCount: 1,
+    profilePhotoUrl: "https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&q=80&w=200",
+    createdAt: "2026-09-04T08:15:00Z",
+    updatedAt: "2026-09-04T08:15:00Z"
   }
 ];
 
@@ -299,6 +586,7 @@ export class AppStore {
   private currentUser: AppUser | null = null;
   private userGPS: GeoLocation = { lat: 13.0827, lng: 80.2707 }; // Default Central Chennai
   private notifications: AppNotification[] = [];
+  private adminLogs: AdminAuditLog[] = [];
 
   // Listeners list for reactive UI re-renders
   private listeners: (() => void)[] = [];
@@ -315,32 +603,8 @@ export class AppStore {
     onAuthStateChanged(auth, (user) => {
       if (user) {
         console.log("Firebase Auth State Sync: Active Session detected ->", user.uid);
-        
-        // Setup current platform session mapped to authenticated user
-        const existingUser = this.users.find(u => u.uid === user.uid);
-        if (!existingUser) {
-          // Check if there is an email matching seed admin or another user
-          const seedMatch = this.users.find(u => u.email.toLowerCase() === (user.email || "").toLowerCase());
-          if (seedMatch) {
-            seedMatch.uid = user.uid;
-            this.currentUser = seedMatch;
-          } else {
-            const newUser: AppUser = {
-              uid: user.uid,
-              email: user.email || "anonymous@gmail.com",
-              fullName: user.displayName || "Anonymous Lifesaver",
-              role: (user.email === "srini16dinesh@gmail.com") ? "admin" : "user",
-              requestsToday: 0,
-              createdAt: new Date().toISOString()
-            };
-            this.users.push(newUser);
-            this.currentUser = newUser;
-          }
-        } else {
-          this.currentUser = existingUser;
-        }
-        this.saveToStorage();
-        this.notify();
+        // Note: Firebase auth provides valid credentials for Firestore rules,
+        // but we do not automatically bypass the login screen on page refresh.
       } else {
         // Automatically sign in anonymously so we have a valid auth token for Firestore rules
         signInAnonymously(auth).catch((err) => {
@@ -427,6 +691,25 @@ export class AppStore {
         }
       });
 
+      onSnapshot(collection(db, "admin_logs"), (snapshot) => {
+        const list: AdminAuditLog[] = [];
+        snapshot.forEach((doc) => {
+          list.push({ id: doc.id, ...doc.data() } as AdminAuditLog);
+        });
+        list.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+        if (snapshot.size > 0) {
+          this.adminLogs = list;
+          this.saveToStorage();
+          this.notify();
+        }
+      }, (error) => {
+        try {
+          handleFirestoreError(error, OperationType.LIST, "admin_logs");
+        } catch {
+          // Graceful silent fallback
+        }
+      });
+
       // Run on-startup seed checklist
       this.seedFirestoreIfNeeded();
 
@@ -497,14 +780,25 @@ export class AppStore {
       const storedCurrentUser = localStorage.getItem("blood_finder_current_user");
       const storedGPS = localStorage.getItem("blood_finder_gps");
       const storedNotifications = localStorage.getItem("blood_finder_notifications");
+      const storedAdminLogs = localStorage.getItem("blood_finder_admin_logs");
 
-      this.donors = storedDonors ? JSON.parse(storedDonors) : SEED_DONORS;
+      if (storedDonors) {
+        const parsed = JSON.parse(storedDonors);
+        const existingUids = new Set(parsed.map((d: Donor) => d.uid));
+        const missing = SEED_DONORS.filter(d => !existingUids.has(d.uid));
+        this.donors = [...parsed, ...missing];
+      } else {
+        this.donors = SEED_DONORS;
+      }
       this.emergencies = storedEmergencies ? JSON.parse(storedEmergencies) : SEED_REQUESTS;
       this.chats = storedChats ? JSON.parse(storedChats) : SEED_CHATS;
       this.messages = storedMessages ? JSON.parse(storedMessages) : SEED_MESSAGES;
       this.users = storedUsers ? JSON.parse(storedUsers) : SEED_USERS;
-      this.currentUser = storedCurrentUser ? JSON.parse(storedCurrentUser) : this.users[3]; // Setup first active user as system default admin (Srini) which exists in seed!
+      // On page load/refresh, require authentication: display the login screen
+      this.currentUser = null;
+      localStorage.removeItem("blood_finder_current_user");
       this.notifications = storedNotifications ? JSON.parse(storedNotifications) : [];
+      this.adminLogs = storedAdminLogs ? JSON.parse(storedAdminLogs) : SEED_ADMIN_LOGS;
       if (storedGPS) {
         this.userGPS = JSON.parse(storedGPS);
       } else {
@@ -527,7 +821,7 @@ export class AppStore {
       this.chats = SEED_CHATS;
       this.messages = SEED_MESSAGES;
       this.users = SEED_USERS;
-      this.currentUser = SEED_USERS[3];
+      this.currentUser = null;
     }
     this.saveToStorage();
   }
@@ -539,13 +833,10 @@ export class AppStore {
     localStorage.setItem("blood_finder_chats", JSON.stringify(this.chats));
     localStorage.setItem("blood_finder_messages", JSON.stringify(this.messages));
     localStorage.setItem("blood_finder_users", JSON.stringify(this.users));
-    if (this.currentUser) {
-      localStorage.setItem("blood_finder_current_user", JSON.stringify(this.currentUser));
-    } else {
-      localStorage.removeItem("blood_finder_current_user");
-    }
+    localStorage.removeItem("blood_finder_current_user");
     localStorage.setItem("blood_finder_gps", JSON.stringify(this.userGPS));
     localStorage.setItem("blood_finder_notifications", JSON.stringify(this.notifications));
+    localStorage.setItem("blood_finder_admin_logs", JSON.stringify(this.adminLogs));
   }
 
   // Reactive methods
@@ -657,6 +948,18 @@ export class AppStore {
     if (!profile) throw new Error("No donor profile registered under this user");
     profile.isAvailable = isAvailable;
     profile.updatedAt = new Date().toISOString();
+    this.saveToStorage();
+    this.notify();
+
+    // Firestore Sync
+    this.syncToFirestore("donors", profile.uid, profile);
+  }
+
+  public updateDonorProfile(updates: Partial<Donor>) {
+    const profile = this.getMyDonorProfile();
+    if (!profile) throw new Error("No donor profile registered under this user");
+    
+    Object.assign(profile, updates, { updatedAt: new Date().toISOString() });
     this.saveToStorage();
     this.notify();
 
@@ -795,16 +1098,31 @@ export class AppStore {
 
       // Firestore Sync
       this.syncToFirestore("emergency_requests", r.requestId, r);
+
+      // Audit Log for accountability
+      this.logAdminAction(
+        "SOS Fulfilled",
+        `Fulfilled emergency SOS for patient '${r.patientName}' (${r.bloodGroupNeeded}, ${r.unitsNeeded} unit(s) at ${r.hospitalName}, ${r.city})`,
+        r.requestId
+      );
     }
   }
 
   public deleteRequest(requestId: string) {
+    const r = this.emergencies.find((req) => req.requestId === requestId);
     this.emergencies = this.emergencies.filter((req) => req.requestId !== requestId);
     this.saveToStorage();
     this.notify();
 
     // Firestore Sync delete
     deleteDoc(doc(db, "emergency_requests", requestId)).catch((e) => console.warn(e));
+
+    // Audit Log for accountability
+    this.logAdminAction(
+      "SOS Deleted",
+      `Cleaned/Deleted emergency request for patient '${r?.patientName || requestId}' (${r?.hospitalName || 'Unknown Hospital'}, ${r?.city || ''})`,
+      requestId
+    );
   }
 
   // Chats matching and communications
@@ -1258,18 +1576,72 @@ export class AppStore {
   }
 
   // Admin capabilities
-  public deleteDonor(uid: string) {
+  public async deleteDonor(uid: string) {
+    const target = this.donors.find((d) => d.uid === uid);
+    // Update local state first to ensure UI responsiveness for mock admins
     this.donors = this.donors.filter((d) => d.uid !== uid);
     this.saveToStorage();
     this.notify();
+
+    // Record action in Audit Log
+    this.logAdminAction(
+      "Donor Removed",
+      `Removed donor profile for '${target?.fullName || uid}' (Blood Group: ${target?.bloodGroup || 'Unknown'}, City: ${target?.city || 'Unknown'})`,
+      uid
+    );
+
+    try {
+      await deleteDoc(doc(db, "donors", uid));
+    } catch (e) {
+      console.warn("Firestore delete blocked (expected if mock admin bypass used):", e);
+    }
   }
 
-  public deleteUser(uid: string) {
+  public async deleteUser(uid: string) {
+    const target = this.users.find((u) => u.uid === uid);
+    // Update local state first to ensure UI responsiveness for mock admins
     this.users = this.users.filter((u) => u.uid !== uid);
     this.donors = this.donors.filter((d) => d.uid !== uid);
     this.chats = this.chats.filter((c) => !c.participants.includes(uid));
     this.saveToStorage();
     this.notify();
+
+    // Record action in Audit Log
+    this.logAdminAction(
+      "User Removed",
+      `Permanently removed registered user account '${target?.fullName || uid}' (${target?.email || 'No email'}) with role: ${target?.role || 'user'}`,
+      uid
+    );
+
+    try {
+      await deleteDoc(doc(db, "donors", uid));
+    } catch (e) {
+      console.warn("Firestore delete blocked (expected if mock admin bypass used):", e);
+    }
+  }
+
+  public getAdminLogs(): AdminAuditLog[] {
+    return this.adminLogs;
+  }
+
+  public async logAdminAction(action: string, details: string, targetId?: string) {
+    const admin = this.currentUser;
+    const newLog: AdminAuditLog = {
+      id: "log_" + Date.now() + "_" + Math.random().toString(36).substring(2, 7),
+      action,
+      details,
+      targetId,
+      adminId: admin?.uid || auth.currentUser?.uid || "admin_super",
+      adminEmail: admin?.email || auth.currentUser?.email || "srini16dinesh@gmail.com",
+      timestamp: new Date().toISOString()
+    };
+    this.adminLogs.unshift(newLog);
+    this.saveToStorage();
+    this.notify();
+
+    // Firestore Sync
+    this.syncToFirestore("admin_logs", newLog.id, newLog);
+    return newLog;
   }
 
   public verifyDonorStatus(uid: string) {
@@ -1318,7 +1690,8 @@ export class AppStore {
     });
   }
 
-  public addNotification(noti: Omit<AppNotification, "id" | "timestamp" | "read">) {
+  
+  public async addNotification(noti: Omit<AppNotification, "id" | "timestamp" | "read">) {
     const newNoti: AppNotification = {
       ...noti,
       id: "noti_" + Math.random().toString(36).substring(2, 9),
@@ -1329,7 +1702,40 @@ export class AppStore {
     this.saveToStorage();
     this.notify();
     this.syncToFirestore("notifications", newNoti.id, newNoti);
+
+    // If it's an email type and we have an OAuth token, actually send a REAL email!
+    if (newNoti.type === "Email" && newNoti.recipient) {
+      const token = (typeof window !== 'undefined') ? (window as any)._googleOAuthToken : null;
+      if (token) {
+        try {
+          const emailLines = [
+            `To: ${newNoti.recipient}`,
+            `Subject: HEMOLINK ALERT: ${newNoti.title.replace(/[^a-zA-Z0-9 ]/g, '')}`,
+            'Content-Type: text/plain; charset=utf-8',
+            '',
+            newNoti.message
+          ];
+          
+          const rawEmail = emailLines.join('\r\n');
+          const base64EncodedEmail = btoa(unescape(encodeURIComponent(rawEmail))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+          
+          await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ raw: base64EncodedEmail })
+          });
+          
+          console.log("Real Gmail successfully sent to:", newNoti.recipient);
+        } catch (e) {
+          console.error("Failed to send real Gmail:", e);
+        }
+      }
+    }
   }
+
 }
 
 // Export singleton instance of application store for global React imports
