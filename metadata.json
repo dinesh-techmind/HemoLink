@@ -1,8 +1,9 @@
 {
   "name": "HEMOLINK",
-  "description": "HEMOLINK - Emergency Blood Network. Connect with nearby blood donors instantly during medical emergencies.",
+  "description": "HEMOLINK - Emergency Blood Network with two-stage Smart Donor Matching, Google Contacts & Lifesaver Circle integration, and human-in-the-loop review confirmation.",
   "requestFramePermissions": [
-    "geolocation"
+    "geolocation",
+    "camera"
   ],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"

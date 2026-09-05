@@ -42,6 +42,26 @@ export function calculateDistance(lat1: number, lon1: number, lat2: number, lon2
 // Pre-seeded donor database (Realistic locations in India & globally suitable coordinates)
 const SEED_DONORS: Donor[] = [
   {
+    uid: "admin_super",
+    fullName: "S.S. Dinesh",
+    email: "srini16dinesh@gmail.com",
+    phone: "+91 94432 10987",
+    age: 26,
+    gender: "Male",
+    bloodGroup: "O+",
+    city: "Coimbatore",
+    state: "Tamil Nadu",
+    pincode: "641001",
+    location: { lat: 11.0168, lng: 76.9558 },
+    isAvailable: true,
+    lastDonationDate: "2025-05-20",
+    donationCount: 3,
+    savedUnits: 55,
+    profilePhotoUrl: "/avatars/male_passport_dinesh.jpg",
+    createdAt: "2025-01-12T09:00:00Z",
+    updatedAt: "2026-06-01T10:00:00Z"
+  },
+  {
     uid: "donor_rahul_1",
     fullName: "Rahul Varma",
     email: "rahul.varma@gmail.com",
@@ -56,6 +76,7 @@ const SEED_DONORS: Donor[] = [
     isAvailable: true,
     lastDonationDate: "2026-02-15",
     donationCount: 6,
+    savedUnits: 65,
     profilePhotoUrl: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200",
     createdAt: "2025-10-10T12:00:00Z",
     updatedAt: "2026-06-01T10:00:00Z"
@@ -75,6 +96,7 @@ const SEED_DONORS: Donor[] = [
     isAvailable: true,
     lastDonationDate: null,
     donationCount: 0,
+    savedUnits: 0,
     profilePhotoUrl: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&q=80&w=200",
     createdAt: "2025-11-12T09:30:00Z",
     updatedAt: "2026-05-20T14:15:00Z"
@@ -94,6 +116,7 @@ const SEED_DONORS: Donor[] = [
     isAvailable: true,
     lastDonationDate: "2025-12-01",
     donationCount: 11,
+    savedUnits: 120,
     profilePhotoUrl: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=200",
     createdAt: "2025-08-01T15:00:00Z",
     updatedAt: "2026-05-30T11:00:00Z"
@@ -113,6 +136,7 @@ const SEED_DONORS: Donor[] = [
     isAvailable: true,
     lastDonationDate: "2026-01-20",
     donationCount: 3,
+    savedUnits: 35,
     profilePhotoUrl: "https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&q=80&w=200",
     createdAt: "2026-01-01T10:00:00Z",
     updatedAt: "2026-06-02T16:00:00Z"
@@ -132,6 +156,7 @@ const SEED_DONORS: Donor[] = [
     isAvailable: false,
     lastDonationDate: "2026-05-10",
     donationCount: 15,
+    savedUnits: 1050,
     profilePhotoUrl: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&q=80&w=200",
     createdAt: "2025-04-15T08:00:00Z",
     updatedAt: "2026-05-10T12:00:00Z"
@@ -151,6 +176,7 @@ const SEED_DONORS: Donor[] = [
     isAvailable: true,
     lastDonationDate: null,
     donationCount: 0,
+    savedUnits: 0,
     profilePhotoUrl: "https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&q=80&w=200",
     createdAt: "2026-08-06T11:00:00Z",
     updatedAt: "2026-08-06T11:00:00Z"
@@ -170,6 +196,7 @@ const SEED_DONORS: Donor[] = [
     isAvailable: true,
     lastDonationDate: "2026-08-09",
     donationCount: 4,
+    savedUnits: 50,
     profilePhotoUrl: "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&q=80&w=200",
     createdAt: "2026-08-09T08:30:00Z",
     updatedAt: "2026-08-09T08:30:00Z"
@@ -189,6 +216,7 @@ const SEED_DONORS: Donor[] = [
     isAvailable: true,
     lastDonationDate: null,
     donationCount: 2,
+    savedUnits: 20,
     profilePhotoUrl: "https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&q=80&w=200",
     createdAt: "2026-08-12T14:15:00Z",
     updatedAt: "2026-08-12T14:15:00Z"
@@ -208,6 +236,7 @@ const SEED_DONORS: Donor[] = [
     isAvailable: true,
     lastDonationDate: "2026-08-14",
     donationCount: 5,
+    savedUnits: 550,
     profilePhotoUrl: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&q=80&w=200",
     createdAt: "2026-08-14T09:45:00Z",
     updatedAt: "2026-08-14T09:45:00Z"
@@ -938,9 +967,86 @@ export class AppStore {
     return newDonor;
   }
 
+  public registerDirectDonor(donorData: Omit<Donor, "createdAt" | "updatedAt">): Donor {
+    const existingIndex = this.donors.findIndex(
+      (d) => d.email.toLowerCase() === donorData.email.toLowerCase() || d.uid === donorData.uid
+    );
+    const newDonor: Donor = {
+      ...donorData,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+    if (existingIndex >= 0) {
+      this.donors[existingIndex] = newDonor;
+    } else {
+      this.donors.push(newDonor);
+    }
+    this.saveToStorage();
+    this.notify();
+    this.syncToFirestore("donors", newDonor.uid, newDonor);
+    return newDonor;
+  }
+
   public getMyDonorProfile(): Donor | undefined {
     if (!this.currentUser) return undefined;
     return this.donors.find((d) => d.uid === this.currentUser!.uid);
+  }
+
+  public ensureDonorProfileForUser(user?: AppUser | null): Donor {
+    const targetUser = user || this.currentUser;
+    if (!targetUser) {
+      return {
+        uid: "guest_donor_pass",
+        fullName: "S.S. Dinesh",
+        email: "srini16dinesh@gmail.com",
+        phone: "+91 94432 10987",
+        age: 26,
+        gender: "Male",
+        bloodGroup: "O+",
+        city: "Coimbatore",
+        state: "Tamil Nadu",
+        pincode: "641001",
+        location: { lat: 11.0168, lng: 76.9558 },
+        isAvailable: true,
+        lastDonationDate: "2025-05-20",
+        donationCount: 3,
+        savedUnits: 55,
+        profilePhotoUrl: "/avatars/male_passport_dinesh.jpg",
+        createdAt: "2025-01-12T09:00:00Z",
+        updatedAt: new Date().toISOString()
+      };
+    }
+
+    let existing = this.donors.find((d) => d.uid === targetUser.uid);
+    if (!existing) {
+      const lowerName = (targetUser.fullName || "").toLowerCase();
+      const isFemale = lowerName.includes("priya") || lowerName.includes("sarah") || lowerName.includes("sharma");
+      existing = {
+        uid: targetUser.uid,
+        fullName: targetUser.fullName || (targetUser.email.includes("dinesh") ? "S.S. Dinesh" : targetUser.email.split("@")[0]),
+        email: targetUser.email,
+        phone: "+91 94432 10987",
+        age: 26,
+        gender: isFemale ? "Female" : "Male",
+        bloodGroup: "O+",
+        city: "Coimbatore",
+        state: "Tamil Nadu",
+        pincode: "641001",
+        location: { lat: 11.0168, lng: 76.9558 },
+        isAvailable: true,
+        lastDonationDate: "2025-05-20",
+        donationCount: 3,
+        savedUnits: 55,
+        profilePhotoUrl: isFemale ? "/avatars/female_passport_sarah.jpg" : "/avatars/male_passport_david.jpg",
+        createdAt: targetUser.createdAt || new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+      this.donors.push(existing);
+      this.saveToStorage();
+      this.notify();
+      this.syncToFirestore("donors", existing.uid, existing);
+    }
+    return existing;
   }
 
   public updateDonorAvailability(isAvailable: boolean) {
@@ -967,11 +1073,41 @@ export class AppStore {
     this.syncToFirestore("donors", profile.uid, profile);
   }
 
-  public logMockDonation() {
-    const profile = this.getMyDonorProfile();
+  public updateDonorSavedUnits(savedUnits: number, donorUid?: string) {
+    const targetUid = donorUid || this.currentUser?.uid;
+    if (!targetUid) return;
+    let profile = this.donors.find((d) => d.uid === targetUid);
+    if (!profile && this.currentUser && this.currentUser.uid === targetUid) {
+      profile = this.ensureDonorProfileForUser(this.currentUser);
+    }
+    if (!profile) return;
+    profile.savedUnits = Math.max(0, savedUnits);
+    profile.updatedAt = new Date().toISOString();
+    this.saveToStorage();
+    this.notify();
+    this.syncToFirestore("donors", profile.uid, profile);
+  }
+
+  public adminUpdateDonor(donorUid: string, updates: Partial<Donor>) {
+    const profile = this.donors.find((d) => d.uid === donorUid);
+    if (!profile) return;
+    Object.assign(profile, updates, { updatedAt: new Date().toISOString() });
+    this.saveToStorage();
+    this.notify();
+    this.syncToFirestore("donors", profile.uid, profile);
+  }
+
+  public logMockDonation(unitsToAdd: number = 5, targetDonorUid?: string) {
+    const targetUid = targetDonorUid || this.currentUser?.uid;
+    let profile = this.donors.find((d) => d.uid === targetUid);
+    if (!profile && this.currentUser && (!targetDonorUid || this.currentUser.uid === targetDonorUid)) {
+      profile = this.ensureDonorProfileForUser(this.currentUser);
+    }
     if (!profile) throw new Error("No donor profile registered");
     profile.lastDonationDate = new Date().toISOString().split("T")[0];
-    profile.donationCount += 1;
+    profile.donationCount = (profile.donationCount || 0) + 1;
+    const currentUnits = typeof profile.savedUnits === "number" ? profile.savedUnits : profile.donationCount * 10;
+    profile.savedUnits = currentUnits + unitsToAdd;
     profile.updatedAt = new Date().toISOString();
     this.saveToStorage();
     this.notify();
@@ -1035,6 +1171,9 @@ export class AppStore {
       requestId: "req_" + Math.random().toString(36).substring(2, 9),
       createdBy: this.currentUser.uid,
       respondedDonors: [],
+      selectedDonors: [],
+      notifiedDonors: [],
+      flowStage: "smart_matching",
       status: "Active",
       createdAt,
       expiresAt,
@@ -1048,51 +1187,235 @@ export class AppStore {
     // Firestore Sync
     this.syncToFirestore("emergency_requests", newRequest.requestId, newRequest);
 
-    // Notify logged-in user if the new request is in their nearby city location
-    if (this.currentUser) {
-      const myProfile = this.getMyDonorProfile();
-      const myCity = myProfile?.city || "Chennai"; // Default city fallback if profile not saved yet
-      const matchedCity = myCity.toLowerCase() === newRequest.city.toLowerCase();
+    // Initial requisition log for admin audit
+    this.logAdminAction(
+      "Emergency Request Created",
+      `New emergency request submitted for '${newRequest.patientName}' (${newRequest.bloodGroupNeeded}, ${newRequest.unitsNeeded} units at ${newRequest.hospitalName}, ${newRequest.city}). Smart Matching algorithm engaged.`,
+      newRequest.requestId
+    );
 
-      if (matchedCity) {
-        const userPhone = myProfile?.phone || "+91 81220 98765";
-        
-        // 1. Send SMS simulation
-        this.addNotification({
-          title: "📲 CELLULAR SMS DISPATCHED",
-          message: `🚨 Emergency Match alert! Patient '${newRequest.patientName}' needs ${newRequest.bloodGroupNeeded} blood at ${newRequest.hospitalName}, ${newRequest.city}. Please access the live console to help now.`,
-          type: "SMS",
-          recipient: userPhone,
-          requestId: newRequest.requestId
-        });
-
-        // 2. Send email simulation
-        this.addNotification({
-          title: "✉️ SMTP EMAIL DISPATCHED",
-          message: `Dear ${this.currentUser.fullName || "Lifesaver"}, a critical SOS blood request is active in your registered city ${newRequest.city}. Hospital: ${newRequest.hospitalName}. Blood Group Requested: ${newRequest.bloodGroupNeeded}. Please check the portal coordinates to contact the coordinator.`,
-          type: "Email",
-          recipient: this.currentUser.email,
-          requestId: newRequest.requestId
-        });
-
-        // 3. In-App broadcast
-        this.addNotification({
-          title: "📌 NEARBY SOS DETECTED",
-          message: `Urgent! ${newRequest.unitsNeeded} units of ${newRequest.bloodGroupNeeded} blood are needed at ${newRequest.hospitalName}, ${newRequest.city}.`,
-          type: "In-App",
-          recipient: this.currentUser.fullName || "Registered User",
-          requestId: newRequest.requestId
-        });
-      }
-    }
+    // Add smart matching system alert for the creator/coordinator
+    this.addNotification({
+      title: "⚡ SMART MATCHING ALGORITHM READY",
+      message: `Requisition for patient '${newRequest.patientName}' (${newRequest.bloodGroupNeeded}) logged. Stage 1 algorithm has ranked compatible donors. Review candidates to confirm targeted notification dispatch.`,
+      type: "In-App",
+      recipient: this.currentUser.fullName || "Coordinator",
+      requestId: newRequest.requestId
+    });
 
     return newRequest;
+  }
+
+  /**
+   * Stage 2 — Human confirmation
+   * Admin/requester reviews the matches -> selects donors -> notifications are sent.
+   * Dispatches targeted notifications only to chosen donors.
+   */
+  public notifyMatchedDonors(requestId: string, selectedDonorUids: string[], customMessage?: string) {
+    const req = this.emergencies.find((r) => r.requestId === requestId);
+    if (!req) throw new Error("Emergency request not found");
+
+    if (selectedDonorUids.length === 0) {
+      throw new Error("Please select at least one donor to notify");
+    }
+
+    req.selectedDonors = selectedDonorUids;
+    req.notifiedDonors = Array.from(new Set([...(req.notifiedDonors || []), ...selectedDonorUids]));
+    req.flowStage = "notify_donors";
+
+    // Dispatch targeted alerts to each selected donor
+    selectedDonorUids.forEach((donorUid) => {
+      const donor = this.donors.find((d) => d.uid === donorUid);
+      if (!donor) return;
+
+      const recipientPhone = donor.phone || "+91 98840 00000";
+      const recipientName = donor.fullName || "Lifesaver";
+
+      const alertText = customMessage?.trim() ||
+        `🚨 Targeted Emergency Match Alert! Patient '${req.patientName}' urgently requires ${req.unitsNeeded} unit(s) of ${req.bloodGroupNeeded} blood at ${req.hospitalName}, ${req.city}. You were chosen as a top-matching donor by the coordinator. Please open your portal console to review & accept.`;
+
+      // 1. In-App Notification
+      this.addNotification({
+        title: `🎯 TARGETED SOS MATCH: ${req.bloodGroupNeeded} needed`,
+        message: alertText,
+        type: "In-App",
+        recipient: recipientName,
+        requestId: req.requestId
+      });
+
+      // 2. Cellular SMS simulation
+      this.addNotification({
+        title: "📲 TARGETED CELLULAR SMS DISPATCHED",
+        message: alertText,
+        type: "SMS",
+        recipient: recipientPhone,
+        requestId: req.requestId
+      });
+
+      // 3. Initiate or get chat for quick direct access
+      try {
+        const chatId = `${donorUid}_${req.createdBy}_${req.requestId}`;
+        if (!this.chats.find((c) => c.chatId === chatId)) {
+          const newChat: Chat = {
+            chatId,
+            participants: [donorUid, req.createdBy],
+            donorId: donorUid,
+            requesterId: req.createdBy,
+            relatedRequestId: req.requestId,
+            phoneRevealed: false,
+            donorAccepted: false,
+            lastMessage: `Targeted match alert sent for ${req.bloodGroupNeeded} at ${req.hospitalName}`,
+            lastMessageAt: new Date().toISOString(),
+            unreadCount: { [donorUid]: 1, [req.createdBy]: 0 },
+            createdAt: new Date().toISOString()
+          };
+          this.chats.unshift(newChat);
+          const initialMsg: Message = {
+            messageId: "msg_match_" + Math.random().toString(36).substring(2, 9),
+            senderId: req.createdBy,
+            text: `Hello ${donor.fullName}, you have been selected through our Smart Matching Algorithm as a top-ranked donor for an emergency blood requisition: ${req.bloodGroupNeeded} at ${req.hospitalName}. Can you confirm your availability to donate?`,
+            timestamp: new Date().toISOString(),
+            read: false
+          };
+          this.messages[chatId] = [initialMsg];
+          this.syncToFirestore("chats", newChat.chatId, newChat);
+          const mDoc = doc(db, "chats", chatId, "messages", initialMsg.messageId);
+          setDoc(mDoc, initialMsg).catch((err) => console.warn("Firestore message save failed", err));
+        }
+      } catch (err) {
+        console.warn("Could not pre-populate chat thread:", err);
+      }
+    });
+
+    this.saveToStorage();
+    this.notify();
+
+    // Firestore Sync
+    this.syncToFirestore("emergency_requests", req.requestId, req);
+
+    // Audit Log for accountability
+    this.logAdminAction(
+      "Targeted Donors Notified",
+      `Reviewed and dispatched targeted emergency alerts to ${selectedDonorUids.length} selected donor(s) for patient '${req.patientName}' (${req.bloodGroupNeeded}) at ${req.hospitalName}`,
+      req.requestId
+    );
+  }
+
+  /**
+   * Flow Step 6: Donor Accepts
+   * Donor accepts the emergency request -> phone unlocked -> ready for donation.
+   */
+  public donorAcceptEmergencyMatch(requestId: string, donorUid: string) {
+    const req = this.emergencies.find((r) => r.requestId === requestId);
+    if (!req) throw new Error("Emergency request not found");
+
+    const donor = this.donors.find((d) => d.uid === donorUid);
+    if (!donor) throw new Error("Donor profile not found");
+
+    if (!req.respondedDonors.includes(donorUid)) {
+      req.respondedDonors.push(donorUid);
+    }
+    req.acceptedDonorId = donorUid;
+    req.flowStage = "donor_accepted";
+
+    // Reveal phone and mark chat accepted
+    const chatId = `${donorUid}_${req.createdBy}_${req.requestId}`;
+    let chat = this.chats.find((c) => c.chatId === chatId);
+    if (!chat) {
+      chat = this.getOrCreateChat(donorUid, req.requestId);
+    }
+    chat.donorAccepted = true;
+    chat.phoneRevealed = true;
+
+    // Send confirmation message in chat
+    const acceptMsg: Message = {
+      messageId: "msg_accept_" + Math.random().toString(36).substring(2, 9),
+      senderId: donorUid,
+      text: `✓ I have ACCEPTED this emergency request. My phone (${donor.phone || "provided"}) is now shared. I am on my way to ${req.hospitalName}.`,
+      timestamp: new Date().toISOString(),
+      read: false
+    };
+    if (!this.messages[chatId]) {
+      this.messages[chatId] = [];
+    }
+    this.messages[chatId].push(acceptMsg);
+
+    // Notification to requester
+    this.addNotification({
+      title: "🎉 DONOR ACCEPTED EMERGENCY REQUISITION",
+      message: `Verified donor ${donor.fullName} (${donor.bloodGroup}) accepted the requisition for ${req.patientName} at ${req.hospitalName}. Direct contact phone: ${donor.phone}`,
+      type: "In-App",
+      recipient: req.requesterName || "Coordinator",
+      requestId: req.requestId
+    });
+
+    this.saveToStorage();
+    this.notify();
+
+    // Firestore sync
+    this.syncToFirestore("emergency_requests", req.requestId, req);
+    this.syncToFirestore("chats", chat.chatId, chat);
+
+    this.logAdminAction(
+      "Donor Match Accepted",
+      `Donor '${donor.fullName}' (${donor.bloodGroup}) accepted emergency request for patient '${req.patientName}' at ${req.hospitalName}`,
+      req.requestId
+    );
+  }
+
+  /**
+   * Flow Steps 7 & 8: Donation Confirmed -> Request Fulfilled
+   * Records the completed clinical donation, updates donor milestones & WHO cooldown, and closes request.
+   */
+  public confirmDonationAndFulfill(requestId: string, donorUid?: string, unitsDonated: number = 1) {
+    const req = this.emergencies.find((r) => r.requestId === requestId);
+    if (!req) throw new Error("Emergency request not found");
+
+    const targetDonorUid = donorUid || req.acceptedDonorId || req.respondedDonors[0];
+    const donor = this.donors.find((d) => d.uid === targetDonorUid);
+
+    const nowIso = new Date().toISOString();
+    const todayDate = nowIso.split("T")[0];
+
+    if (donor) {
+      donor.donationCount = (donor.donationCount || 0) + 1;
+      const currentUnits = typeof donor.savedUnits === "number" ? donor.savedUnits : donor.donationCount * 10;
+      donor.savedUnits = currentUnits + (unitsDonated * 10);
+      donor.lastDonationDate = todayDate; // Restarts WHO 56-day cooldown interval
+      donor.updatedAt = nowIso;
+      this.syncToFirestore("donors", donor.uid, donor);
+    }
+
+    req.confirmedDonationAt = nowIso;
+    req.status = "Fulfilled";
+    req.flowStage = "request_fulfilled";
+
+    // System celebratory notification
+    this.addNotification({
+      title: "🏆 DONATION CONFIRMED & SOS FULFILLED",
+      message: `Life saved! Clinical blood donation of ${unitsDonated} unit(s) for patient '${req.patientName}' (${req.bloodGroupNeeded}) confirmed at ${req.hospitalName}${donor ? ` by donor ${donor.fullName}` : ""}.`,
+      type: "In-App",
+      recipient: req.requesterName || "Emergency Medical Coordinator",
+      requestId: req.requestId
+    });
+
+    this.saveToStorage();
+    this.notify();
+
+    this.syncToFirestore("emergency_requests", req.requestId, req);
+
+    this.logAdminAction(
+      "Donation Confirmed & SOS Fulfilled",
+      `Confirmed clinical blood donation of ${unitsDonated} unit(s) for patient '${req.patientName}' (${req.bloodGroupNeeded}) at ${req.hospitalName}. Request successfully fulfilled.`,
+      req.requestId
+    );
   }
 
   public markRequestFulfilled(requestId: string) {
     const r = this.emergencies.find((req) => req.requestId === requestId);
     if (r) {
       r.status = "Fulfilled";
+      r.flowStage = "request_fulfilled";
       this.saveToStorage();
       this.notify();
 

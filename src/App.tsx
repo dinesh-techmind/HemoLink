@@ -1,5 +1,5 @@
 import { motion, AnimatePresence } from "motion/react";
-import { useState, useEffect, useMemo, FormEvent } from "react";
+import { useState, useEffect, useMemo, useRef, FormEvent } from "react";
 import { store, calculateDistance } from "./lib/store";
 import { Donor, EmergencyRequest, Chat, Message, AppUser, BloodGroup, UrgencyLevel, Gender, AppNotification, AdminAuditLog } from "./types";
 import MapContainer from "./components/MapContainer";
@@ -11,6 +11,27 @@ import GoogleMapsFinder from "./components/GoogleMapsFinder";
 import BloodDonorEligibility from "./components/BloodDonorEligibility";
 import DeregisterConfirmationModal from "./components/DeregisterConfirmationModal";
 import DonorRegistrationTrendChart from "./components/DonorRegistrationTrendChart";
+import GoogleCalendarView from "./components/GoogleCalendarView";
+import GoogleContactsView from "./components/GoogleContactsView";
+import HospitalLocationPicker from "./components/HospitalLocationPicker";
+import HospitalMapModal from "./components/HospitalMapModal";
+import RecentHospitalsDropdown from "./components/RecentHospitalsDropdown";
+import SOSToastNotification, { SOSToastItem } from "./components/SOSToastNotification";
+import { LanguageSwitcher } from "./components/LanguageSwitcher";
+import { MilestoneBadge } from "./components/MilestoneBadge";
+import { MilestoneShowcaseModal } from "./components/MilestoneShowcaseModal";
+import { AdminQrScannerModal } from "./components/AdminQrScannerModal";
+import { SmartDonorMatchingModal } from "./components/SmartDonorMatchingModal";
+import { getDonorSavedUnits, getMilestoneTier, getNextMilestoneProgress } from "./lib/milestones";
+import { useLanguage } from "./lib/i18n";
+import { saveRecentHospital } from "./lib/hospitals";
+import {
+  getBrowserNotificationPermission,
+  requestBrowserNotificationPermission,
+  triggerBrowserNotification,
+  playEmergencyAlertSound
+} from "./lib/browserNotifications";
+import { scheduleEmergencyDrive, getCachedAccessToken } from "./lib/google-calendar";
 import {
   Droplet,
   MapPin,
@@ -41,11 +62,26 @@ import {
   Sun,
   Moon,
   Award,
+  Sparkles,
   QrCode,
   Printer,
   Compass,
   Clock,
-  ClipboardList
+  ClipboardList,
+  Building2,
+  Navigation,
+  ExternalLink,
+  Columns2,
+  LayoutGrid,
+  Map,
+  RotateCcw,
+  Volume2,
+  VolumeX,
+  Radio,
+  BellRing,
+  Camera,
+  Upload,
+  Users
 } from "lucide-react";
 
 // List of standard blood groups
@@ -76,19 +112,27 @@ const CITY_COORDINATES: { [key: string]: { lat: number; lng: number } } = {
 };
 
 export default function App() {
+  const { t } = useLanguage();
   // Global Store States
   const [currentUser, setCurrentUser] = useState<AppUser | null>(store.getCurrentUser());
   const [allUsers, setAllUsers] = useState<AppUser[]>(store.getAllUsers());
   const [donors, setDonors] = useState<Donor[]>(store.getDonors());
   const [emergencies, setEmergencies] = useState<EmergencyRequest[]>(store.getEmergencies());
   const [chats, setChats] = useState<Chat[]>(store.getChats());
-  const [activeTab, setActiveTab] = useState<"search" | "emergency" | "maps" | "eligibility" | "profile" | "chats" | "admin">("search");
+  const [activeTab, setActiveTab] = useState<"search" | "emergency" | "maps" | "eligibility" | "calendar" | "contacts" | "profile" | "chats" | "admin">("search");
 
   // Dark & Light Theme Mode State
   
   
   // Selected donor for Pass generation modal
   const [selectedPassDonor, setSelectedPassDonor] = useState<Donor | null>(null);
+
+  // Selected donor for Milestone Gamification Showcase modal
+  const [selectedMilestoneDonor, setSelectedMilestoneDonor] = useState<Donor | null>(null);
+  const [showMilestoneModal, setShowMilestoneModal] = useState<boolean>(false);
+
+  // Admin QR Code Scanner Modal State
+  const [showAdminQrScanner, setShowAdminQrScanner] = useState<boolean>(false);
 
   // Detailed Deregister Confirmation Modal State
   const [showDeregisterModal, setShowDeregisterModal] = useState<boolean>(false);
@@ -141,11 +185,32 @@ export default function App() {
     }
   };
 
-  // Filter & Search states
+  // Filter & Search input form states
   const [searchBlood, setSearchBlood] = useState<string>("All");
   const [searchCity, setSearchCity] = useState<string>("");
   const [searchRadius, setSearchRadius] = useState<number>(25); // Default 25 km radius
   const [sortBy, setSortBy] = useState<"distance" | "name" | "available">("distance");
+  const [searchOnlyAvailable, setSearchOnlyAvailable] = useState<boolean>(false);
+  
+  // Applied search states (active filter query triggered by "Search Donors & Side Map" or on initial load)
+  const [appliedSearch, setAppliedSearch] = useState<{
+    blood: string;
+    city: string;
+    radius: number;
+    sortBy: "distance" | "name" | "available";
+    onlyAvailable: boolean;
+  }>({
+    blood: "All",
+    city: "",
+    radius: 25,
+    sortBy: "distance",
+    onlyAvailable: false
+  });
+
+  const [searchViewMode, setSearchViewMode] = useState<"side-by-side" | "list" | "map">("side-by-side");
+  const [selectedBloodTypeFilter, setSelectedBloodTypeFilter] = useState<string | null>(null);
+  const [isSearchSubmitting, setIsSearchSubmitting] = useState<boolean>(false);
+  const [searchExecutedNotice, setSearchExecutedNotice] = useState<string | null>(null);
   const [mapToggle, setMapToggle] = useState<boolean>(true);
 
   // Admin Console filter state
@@ -161,6 +226,8 @@ export default function App() {
   const [formUnitsNeeded, setFormUnitsNeeded] = useState<number>(2);
   const [formHospitalName, setFormHospitalName] = useState<string>("");
   const [formHospitalAddress, setFormHospitalAddress] = useState<string>("");
+  const [formHospitalLat, setFormHospitalLat] = useState<number>(13.0827);
+  const [formHospitalLng, setFormHospitalLng] = useState<number>(80.2707);
   const [formRequesterName, setFormRequesterName] = useState<string>("");
   const [formRequesterPhone, setFormRequesterPhone] = useState<string>("");
   const [formCity, setFormCity] = useState<string>("Chennai");
@@ -168,6 +235,8 @@ export default function App() {
   const [formUrgency, setFormUrgency] = useState<UrgencyLevel>("Critical");
   const [formNotes, setFormNotes] = useState<string>("");
   const [formError, setFormError] = useState<string>("");
+  const [selectedHospitalForMapModal, setSelectedHospitalForMapModal] = useState<EmergencyRequest | null>(null);
+  const [selectedRequestForSmartMatching, setSelectedRequestForSmartMatching] = useState<EmergencyRequest | null>(null);
 
   // Become a Donor form fields state
   const [donorFormAge, setDonorFormAge] = useState<number>(25);
@@ -201,6 +270,21 @@ export default function App() {
   const [showLogoutConfirm, setShowLogoutConfirm] = useState<boolean>(false);
   const [isLoggingOut, setIsLoggingOut] = useState<boolean>(false);
 
+  // SOS Toast Notification & Browser Push Notification state
+  const [sosToasts, setSosToasts] = useState<SOSToastItem[]>([]);
+  const [soundEnabled, setSoundEnabled] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem("emergency_audio_enabled") !== "false";
+    } catch {
+      return true;
+    }
+  });
+  const [browserPermission, setBrowserPermission] = useState<NotificationPermission | "unsupported">(() => {
+    return getBrowserNotificationPermission();
+  });
+  const knownEmergencyIdsRef = useRef<Set<string>>(new Set());
+  const isFirstEmergenciesLoadRef = useRef<boolean>(true);
+
   // Register state change listeners
   useEffect(() => {
     const unsubscribe = store.subscribe(() => {
@@ -215,6 +299,55 @@ export default function App() {
     });
     return unsubscribe;
   }, []);
+
+  // Check URL parameters for direct deep-link to a digital donor pass
+  useEffect(() => {
+    try {
+      const searchParams = new URLSearchParams(window.location.search);
+      const passDonorId = searchParams.get("passDonorId") || searchParams.get("donorPass");
+      if (passDonorId) {
+        const found = store.getDonors().find((d) => d.uid === passDonorId || d.uid.toLowerCase() === passDonorId.toLowerCase());
+        if (found) {
+          setSelectedPassDonor(found);
+        }
+      }
+    } catch (e) {
+      console.warn("Failed to parse URL for donor pass:", e);
+    }
+  }, []);
+
+  // If donors list updates and URL specifies a donor pass that wasn't ready yet, open it
+  useEffect(() => {
+    if (!selectedPassDonor && donors.length > 0) {
+      try {
+        const searchParams = new URLSearchParams(window.location.search);
+        const passDonorId = searchParams.get("passDonorId") || searchParams.get("donorPass");
+        if (passDonorId) {
+          const found = donors.find((d) => d.uid === passDonorId || d.uid.toLowerCase() === passDonorId.toLowerCase());
+          if (found) {
+            setSelectedPassDonor(found);
+          }
+        }
+      } catch {
+        // ignore
+      }
+    }
+  }, [donors, selectedPassDonor]);
+
+  // Sync city for emergency form from logged-in user or active location
+  useEffect(() => {
+    if (currentUser?.city && !formPatientName) {
+      setFormCity(currentUser.city);
+      if (currentUser.state) {
+        setFormState(currentUser.state);
+      }
+      const cityKey = currentUser.city.toLowerCase().trim();
+      if (CITY_COORDINATES[cityKey]) {
+        setFormHospitalLat(CITY_COORDINATES[cityKey].lat);
+        setFormHospitalLng(CITY_COORDINATES[cityKey].lng);
+      }
+    }
+  }, [currentUser?.city, currentUser?.state]);
 
   
   // Format timestamp for audit logs
@@ -275,6 +408,199 @@ export default function App() {
   const myProfile = useMemo(() => {
     return store.getMyDonorProfile();
   }, [currentUser, donors]);
+
+  // Determine user's active city for SOS proximity matching & notifications
+  const effectiveUserCity = useMemo(() => {
+    if ((currentUser as any)?.city?.trim()) return (currentUser as any).city.trim();
+    if (myProfile?.city?.trim()) return myProfile.city.trim();
+    if (searchCity.trim()) return searchCity.trim();
+    if (formCity.trim()) return formCity.trim();
+    return "Chennai";
+  }, [currentUser, myProfile?.city, searchCity, formCity]);
+
+  // Action to dismiss a single toast notification
+  const handleDismissToast = (toastId: string) => {
+    setSosToasts((prev) => prev.filter((t) => t.toastId !== toastId));
+  };
+
+  // Action to dismiss all toast notifications
+  const handleDismissAllToasts = () => {
+    setSosToasts([]);
+  };
+
+  // Action to navigate and highlight emergency request on the board
+  const handleViewSOS = (requestId: string) => {
+    setActiveTab("emergency");
+    setTimeout(() => {
+      const el = document.getElementById(`emergency-card-${requestId}`);
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+        el.classList.add("ring-4", "ring-brand-red", "animate-pulse");
+        setTimeout(() => {
+          el.classList.remove("ring-4", "ring-brand-red", "animate-pulse");
+        }, 4000);
+      }
+    }, 350);
+  };
+
+  // Action to request browser desktop notification permissions
+  const handleRequestBrowserPermission = async () => {
+    const perm = await requestBrowserNotificationPermission();
+    setBrowserPermission(perm);
+    if (perm === "granted") {
+      triggerBrowserNotification({
+        title: "🔔 Emergency Alerts Activated!",
+        body: `You will now receive instant desktop notifications whenever high-urgency SOS alerts are broadcast in ${effectiveUserCity}.`,
+        tag: "emergency-setup-welcome"
+      });
+    }
+  };
+
+  // Action to toggle audio telemetry chime
+  const handleToggleSound = () => {
+    setSoundEnabled((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem("emergency_audio_enabled", next ? "true" : "false");
+      } catch {
+        // ignore
+      }
+      if (next) {
+        playEmergencyAlertSound();
+      }
+      return next;
+    });
+  };
+
+  // Action to simulate a live high-urgency SOS alert in user's city for instant testing
+  const handleTriggerTestSOS = () => {
+    const testBloodGroups: BloodGroup[] = ["O+", "O-", "A-", "B+", "AB-"];
+    const randomBlood = testBloodGroups[Math.floor(Math.random() * testBloodGroups.length)];
+    const testId = "req_test_" + Math.random().toString(36).substring(2, 8);
+    const cityKey = effectiveUserCity.toLowerCase().trim();
+    const cityCoords = CITY_COORDINATES[cityKey] || { lat: 13.0827, lng: 80.2707 };
+
+    const simulatedSOS: EmergencyRequest = {
+      requestId: testId,
+      createdBy: currentUser?.uid || "emergency_dispatch",
+      requesterName: "Trauma Care Unit",
+      requesterPhone: "+91 98840 98765",
+      patientName: "Emergency ICU Patient (Live Test)",
+      bloodGroupNeeded: randomBlood,
+      unitsNeeded: 3,
+      hospitalName: "Apollo Emergency Hospital",
+      hospitalAddress: "Greams Road, Thousand Lights",
+      city: effectiveUserCity,
+      state: formState || "Tamil Nadu",
+      location: cityCoords,
+      urgencyLevel: "Critical",
+      additionalNotes: "Simulated emergency alert: Immediate whole blood units needed for trauma surgery.",
+      status: "Active",
+      respondedDonors: [],
+      createdAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 48 * 3600000).toISOString(),
+      shareToken: "emergency_" + Math.random().toString(36).substring(2, 9)
+    };
+
+    if (currentUser) {
+      try {
+        store.createEmergencyRequest({
+          patientName: simulatedSOS.patientName,
+          bloodGroupNeeded: simulatedSOS.bloodGroupNeeded,
+          unitsNeeded: simulatedSOS.unitsNeeded,
+          hospitalName: simulatedSOS.hospitalName,
+          hospitalAddress: simulatedSOS.hospitalAddress,
+          city: simulatedSOS.city,
+          state: simulatedSOS.state,
+          location: simulatedSOS.location,
+          urgencyLevel: simulatedSOS.urgencyLevel,
+          additionalNotes: simulatedSOS.additionalNotes,
+          requesterName: simulatedSOS.requesterName,
+          requesterPhone: simulatedSOS.requesterPhone
+        });
+      } catch {
+        // If rate limit reached or demo mode, fallback to direct trigger
+      }
+    }
+
+    const testToast: SOSToastItem = {
+      ...simulatedSOS,
+      toastId: `toast_${testId}_${Date.now()}`,
+      autoDismissMs: 12000
+    };
+
+    setSosToasts((prev) => [testToast, ...prev]);
+
+    triggerBrowserNotification({
+      title: `🚨 [CRITICAL SOS] ${simulatedSOS.bloodGroupNeeded} Needed in ${simulatedSOS.city}`,
+      body: `${simulatedSOS.patientName} urgently needs ${simulatedSOS.unitsNeeded} unit(s) at ${simulatedSOS.hospitalName}, ${simulatedSOS.city}.\nClick to view and respond.`,
+      tag: `sos-test-${testId}`,
+      requireInteraction: true,
+      onClick: () => handleViewSOS(simulatedSOS.requestId)
+    });
+
+    if (soundEnabled) {
+      playEmergencyAlertSound();
+    }
+  };
+
+  // Monitor store emergencies: trigger toast & browser notifications when a new high-urgency SOS is posted in user's city
+  useEffect(() => {
+    if (!emergencies || emergencies.length === 0) return;
+
+    // First load: register initial IDs to avoid firing alerts on historical requests
+    if (isFirstEmergenciesLoadRef.current) {
+      isFirstEmergenciesLoadRef.current = false;
+      emergencies.forEach((e) => knownEmergencyIdsRef.current.add(e.requestId));
+      return;
+    }
+
+    const cityKey = effectiveUserCity.toLowerCase().trim();
+    const newMatchingAlerts: EmergencyRequest[] = [];
+
+    emergencies.forEach((req) => {
+      if (knownEmergencyIdsRef.current.has(req.requestId)) return;
+      knownEmergencyIdsRef.current.add(req.requestId);
+
+      const isHighUrgency = req.urgencyLevel === "Critical" || req.urgencyLevel === "Urgent";
+      const reqCityKey = (req.city || "").toLowerCase().trim();
+      const isCityMatch =
+        reqCityKey === cityKey ||
+        cityKey.includes(reqCityKey) ||
+        reqCityKey.includes(cityKey) ||
+        (formCity && reqCityKey === formCity.toLowerCase().trim());
+
+      if (req.status === "Active" && isHighUrgency && isCityMatch) {
+        newMatchingAlerts.push(req);
+      }
+    });
+
+    if (newMatchingAlerts.length > 0) {
+      const createdToasts: SOSToastItem[] = newMatchingAlerts.map((req) => ({
+        ...req,
+        toastId: `toast_${req.requestId}_${Date.now()}`,
+        autoDismissMs: 12000
+      }));
+
+      setSosToasts((prev) => [...createdToasts, ...prev].slice(0, 4));
+
+      newMatchingAlerts.forEach((alert) => {
+        triggerBrowserNotification({
+          title: `🚨 [${alert.urgencyLevel.toUpperCase()} SOS] ${alert.bloodGroupNeeded} Needed in ${alert.city}`,
+          body: `${alert.patientName} urgently needs ${alert.unitsNeeded} unit(s) at ${alert.hospitalName}, ${alert.city}.\nClick to view and respond.`,
+          tag: `sos-alert-${alert.requestId}`,
+          requireInteraction: alert.urgencyLevel === "Critical",
+          onClick: () => {
+            handleViewSOS(alert.requestId);
+          }
+        });
+      });
+
+      if (soundEnabled) {
+        playEmergencyAlertSound();
+      }
+    }
+  }, [emergencies, effectiveUserCity, formCity, soundEnabled]);
 
   // Geolocation lookup helpers & responsive state
   const [userGPS, setUserGPS] = useState<{ lat: number; lng: number }>(store.getGPSLocation());
@@ -352,15 +678,20 @@ export default function App() {
   const computedDonors = useMemo(() => {
     let list = [...donors];
 
-    // Filter by group compatibility or direct matches
-    if (searchBlood !== "All") {
-      list = list.filter((d) => d.bloodGroup === searchBlood);
+    // Filter by group compatibility or direct matches from applied search
+    if (appliedSearch.blood !== "All") {
+      list = list.filter((d) => d.bloodGroup === appliedSearch.blood);
     }
 
     // Filter by city matcher
-    if (searchCity.trim()) {
-      const query = searchCity.toLowerCase().trim();
+    if (appliedSearch.city.trim()) {
+      const query = appliedSearch.city.toLowerCase().trim();
       list = list.filter((d) => d.city.toLowerCase().includes(query) || d.state.toLowerCase().includes(query));
+    }
+
+    // Filter by availability to reduce noise during active SOS
+    if (appliedSearch.onlyAvailable) {
+      list = list.filter((d) => d.isAvailable);
     }
 
     // Calculate donor distances and limit of Radius if configured
@@ -372,19 +703,102 @@ export default function App() {
     });
 
     // Distance Radius Slider limit
-    let filtered = mapped.filter((d) => d.distance <= searchRadius);
+    let filtered = mapped.filter((d) => d.distance <= appliedSearch.radius);
 
     // Sorting priorities
-    if (sortBy === "distance") {
+    if (appliedSearch.sortBy === "distance") {
       filtered.sort((a, b) => a.distance - b.distance);
-    } else if (sortBy === "name") {
+    } else if (appliedSearch.sortBy === "name") {
       filtered.sort((a, b) => a.fullName.localeCompare(b.fullName));
-    } else if (sortBy === "available") {
+    } else if (appliedSearch.sortBy === "available") {
       filtered.sort((a, b) => (b.isAvailable ? 1 : 0) - (a.isAvailable ? 1 : 0));
     }
 
     return filtered;
-  }, [donors, searchBlood, searchCity, searchRadius, sortBy, userGPS]);
+  }, [donors, appliedSearch, userGPS]);
+
+  // Aggregate blood type stats for the computed search results
+  const bloodTypeBreakdown = useMemo(() => {
+    const map: Record<string, { bloodGroup: BloodGroup; count: number; availableCount: number }> = {};
+    computedDonors.forEach((donor) => {
+      if (!map[donor.bloodGroup]) {
+        map[donor.bloodGroup] = { bloodGroup: donor.bloodGroup, count: 0, availableCount: 0 };
+      }
+      map[donor.bloodGroup].count += 1;
+      if (donor.isAvailable) {
+        map[donor.bloodGroup].availableCount += 1;
+      }
+    });
+
+    return BLOOD_GROUPS.filter((bg) => map[bg] && map[bg].count > 0).map((bg) => map[bg]);
+  }, [computedDonors]);
+
+  // Final list displayed if user clicks a specific blood type badge from the breakdown
+  const displayedDonors = useMemo(() => {
+    if (!selectedBloodTypeFilter) return computedDonors;
+    return computedDonors.filter((d) => d.bloodGroup === selectedBloodTypeFilter);
+  }, [computedDonors, selectedBloodTypeFilter]);
+
+  // Track if there are pending unapplied changes in the filter sidebar
+  const isFilterDirty =
+    searchBlood !== appliedSearch.blood ||
+    searchCity.trim() !== appliedSearch.city ||
+    searchRadius !== appliedSearch.radius ||
+    sortBy !== appliedSearch.sortBy ||
+    searchOnlyAvailable !== appliedSearch.onlyAvailable;
+
+  // Execute search based on filled details and activate side-by-side map
+  const handleExecuteSearch = () => {
+    setIsSearchSubmitting(true);
+    const cityTrimmed = searchCity.trim();
+    const cityKey = cityTrimmed.toLowerCase();
+
+    // If city matches preset coordinates, update GPS coordinates immediately
+    if (cityKey && CITY_COORDINATES[cityKey]) {
+      const coords = CITY_COORDINATES[cityKey];
+      store.setGPSLocation(coords);
+      setUserGPS(coords);
+    }
+
+    setAppliedSearch({
+      blood: searchBlood,
+      city: cityTrimmed,
+      radius: searchRadius,
+      sortBy: sortBy,
+      onlyAvailable: searchOnlyAvailable
+    });
+
+    // Display results with side-by-side map
+    setSearchViewMode("side-by-side");
+    setSelectedBloodTypeFilter(null);
+
+    setSearchExecutedNotice(
+      `Search applied: ${searchBlood === "All" ? "All blood types" : `Group ${searchBlood}`}${
+        cityTrimmed ? ` in ${cityTrimmed}` : ""
+      } within ${searchRadius} km${searchOnlyAvailable ? " • Available Donors Only" : ""}.`
+    );
+
+    setTimeout(() => {
+      setIsSearchSubmitting(false);
+    }, 250);
+  };
+
+  const handleResetFilters = () => {
+    setSearchBlood("All");
+    setSearchCity("");
+    setSearchRadius(25);
+    setSortBy("distance");
+    setSearchOnlyAvailable(false);
+    setAppliedSearch({
+      blood: "All",
+      city: "",
+      radius: 25,
+      sortBy: "distance",
+      onlyAvailable: false
+    });
+    setSelectedBloodTypeFilter(null);
+    setSearchExecutedNotice(null);
+  };
 
   // Compute aggregate counters for overview summaries
   const stats = useMemo(() => {
@@ -406,12 +820,24 @@ export default function App() {
       return;
     }
 
-    // Geo coordinates extractor fallback dictionary
+    // Geo coordinates from hospital location picker or city coordinates
     const cityKey = formCity.toLowerCase().trim();
-    const coords = CITY_COORDINATES[cityKey] || { lat: 13.0827 + (Math.random() - 0.5) * 0.1, lng: 80.2707 + (Math.random() - 0.5) * 0.1 };
+    const coords = (formHospitalLat && formHospitalLng && !isNaN(formHospitalLat) && !isNaN(formHospitalLng))
+      ? { lat: formHospitalLat, lng: formHospitalLng }
+      : (CITY_COORDINATES[cityKey] || { lat: 13.0827, lng: 80.2707 });
 
     try {
-      store.createEmergencyRequest({
+      // Save or update hospital frequency in city's stored hospital list
+      saveRecentHospital({
+        name: formHospitalName,
+        address: formHospitalAddress,
+        city: formCity,
+        state: formState,
+        lat: coords.lat,
+        lng: coords.lng
+      });
+
+      const createdReq = store.createEmergencyRequest({
         patientName: formPatientName,
         bloodGroupNeeded: formBloodNeeded,
         unitsNeeded: formUnitsNeeded,
@@ -431,8 +857,12 @@ export default function App() {
       setFormHospitalName("");
       setFormHospitalAddress("");
       setFormNotes("");
+      setFormHospitalLat(CITY_COORDINATES[cityKey]?.lat || 13.0827);
+      setFormHospitalLng(CITY_COORDINATES[cityKey]?.lng || 80.2707);
       setIsEmergencyModalOpen(false);
       setActiveTab("emergency");
+      // Stage 2 human confirmation: Launch Smart Donor Matching Review workspace
+      setSelectedRequestForSmartMatching(createdReq);
     } catch (err: any) {
       setFormError(err.message || "Request submission failed");
     }
@@ -509,6 +939,31 @@ export default function App() {
       setActiveTab("chats");
     } catch (err: any) {
       alert(err.message || "Failed to respond");
+    }
+  };
+
+  const handleScheduleEmergencyToCalendar = async (req: EmergencyRequest) => {
+    if (!getCachedAccessToken()) {
+      alert("Please connect your Google Calendar in the 'Google Calendar' tab first.");
+      setActiveTab("calendar");
+      return;
+    }
+    try {
+      const now = new Date();
+      const appointmentTime = new Date(now.getTime() + 2 * 60 * 60 * 1000); // 2 hours from now
+      await scheduleEmergencyDrive({
+        patientName: req.patientName,
+        hospitalName: req.hospitalName,
+        hospitalAddress: `${req.hospitalAddress}, ${req.city}`,
+        bloodGroup: req.bloodGroupNeeded,
+        unitsNeeded: req.unitsNeeded,
+        urgencyLevel: req.urgencyLevel,
+        appointmentDateTime: appointmentTime.toISOString(),
+        notes: req.additionalNotes
+      });
+      alert(`📅 Successfully added emergency appointment for "${req.patientName}" at ${req.hospitalName} to your Google Calendar!`);
+    } catch (err: any) {
+      alert(err.message || "Failed to add to Google Calendar. Please check your connection.");
     }
   };
 
@@ -601,6 +1056,101 @@ export default function App() {
     }
   };
 
+  // Reusable card renderer for donors with prominent blood type display and side map locating
+  const renderDonorCard = (donor: Donor, isSideBySide: boolean = false) => {
+    return (
+      <div
+        key={donor.uid}
+        id={`donor-card-${donor.uid}`}
+        className="bg-card-dark border border-border-dark p-4 rounded-2xl flex flex-col justify-between hover:border-zinc-500 transition duration-200 shadow-lg"
+      >
+        <div>
+          {/* Header profile details */}
+          <div className="flex items-start justify-between gap-2.5 mb-3">
+            <div className="flex items-center gap-3 min-w-0">
+              <img
+                src={donor.profilePhotoUrl || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=200"}
+                alt={donor.fullName}
+                referrerPolicy="no-referrer"
+                className="w-10 h-10 rounded-full object-cover border border-border-dark shrink-0"
+              />
+              <div className="min-w-0">
+                <h4 className="font-bold text-text-bright text-sm tracking-tight leading-tight truncate">{donor.fullName}</h4>
+                <p className="text-[10px] text-text-subtle flex items-center gap-1 mt-0.5 truncate">
+                  <MapPin className="w-3 h-3 text-brand-red shrink-0" />
+                  <span className="truncate">{donor.city}, {donor.state}</span>
+                </p>
+                <div className="mt-1.5 flex items-center gap-1.5 flex-wrap">
+                  <MilestoneBadge
+                    donor={donor}
+                    variant="pill"
+                    onClick={() => {
+                      setSelectedMilestoneDonor(donor);
+                      setShowMilestoneModal(true);
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Blood Type Badge - Prominently Displayed */}
+            <div className="text-right shrink-0">
+              <span className={`text-base font-extrabold font-display px-3 py-1 rounded-xl shadow-inner block leading-none ${getGroupSelectorBadge(donor.bloodGroup)}`}>
+                {donor.bloodGroup}
+              </span>
+              <span className="text-[9px] text-text-subtle font-mono block mt-1 uppercase">
+                {donor.bloodGroup === "O-" ? "Universal Donor" : donor.bloodGroup === "AB+" ? "Universal Recipient" : "Blood Group"}
+              </span>
+            </div>
+          </div>
+
+          {/* Blood Compatibility Info Tag */}
+          {BLOOD_COMPATIBILITY[donor.bloodGroup] && (
+            <div className="bg-[#18181A] border border-border-dark/70 px-2.5 py-1.5 rounded-lg text-[10px] text-text-muted flex items-center justify-between gap-1 mb-2.5">
+              <span className="text-text-subtle font-mono text-[9px] uppercase font-bold">Can Give Blood To:</span>
+              <span className="text-emerald-400 font-mono font-semibold truncate">
+                {BLOOD_COMPATIBILITY[donor.bloodGroup].canGiveTo.join(", ")}
+              </span>
+            </div>
+          )}
+
+          {/* Technical and Geography specs */}
+          <div className="grid grid-cols-2 gap-2 text-[10px] text-text-muted border-t border-border-dark/60 pt-2 pb-1">
+            <div>
+              <span className="text-text-subtle font-bold uppercase tracking-wider block">Est. Proximity</span>
+              <span className="font-mono text-text-bright text-xs">{donor.distance} km away</span>
+            </div>
+            <div>
+              <span className="text-text-subtle font-bold uppercase tracking-wider block">Availability</span>
+              <span className={`inline-flex items-center font-semibold ${donor.isAvailable ? "text-emerald-400" : "text-text-subtle"}`}>
+                <span className={`w-1.5 h-1.5 rounded-full mr-1.5 ${donor.isAvailable ? "bg-emerald-500 animate-pulse" : "bg-zinc-500"}`}></span>
+                {donor.isAvailable ? "Ready to Donate" : "Temporarily Away"}
+              </span>
+            </div>
+          </div>
+
+          {/* Graphical Timeline for Donation History & Upcoming Eligibility */}
+          <DonorGraphicalTimeline donor={donor} compact={true} />
+        </div>
+
+        {/* Contact triggering button */}
+        <button
+          id={`donor-contact-btn-${donor.uid}`}
+          disabled={!donor.isAvailable}
+          onClick={() => handleInitiateContact(donor)}
+          className={`w-full mt-3 py-2.5 rounded-xl text-xs font-bold font-display cursor-pointer tracking-wider uppercase transition flex items-center justify-center gap-1.5 ${
+            donor.isAvailable
+              ? "bg-surface-dark border border-border-dark hover:border-zinc-500 text-text-bright hover:bg-[#202023]"
+              : "bg-surface-dark border-transparent text-text-subtle cursor-not-allowed"
+          }`}
+        >
+          <Phone className="w-3.5 h-3.5 text-brand-red" />
+          <span>Request Secure Contact</span>
+        </button>
+      </div>
+    );
+  };
+
   if (!currentUser) {
     return <OnboardingGate onComplete={() => setCurrentUser(store.getCurrentUser())} />;
   }
@@ -611,7 +1161,7 @@ export default function App() {
       {emergencies.filter((e) => e.status === "Active" && e.urgencyLevel === "Critical").length > 0 && (
         <div className="bg-brand-red text-white py-2 px-4 text-center text-xs font-bold tracking-wide animate-pulse flex items-center justify-center gap-2">
           <Flame className="w-4 h-4 fill-white" />
-          <span>CRITICAL BLOOD REQUISITIONS ACTIVE IN YOUR LOCATION. SECURE THE FEED NOW.</span>
+          <span>{t("emergency_banner", "CRITICAL BLOOD REQUISITIONS ACTIVE IN YOUR LOCATION. SECURE THE FEED NOW.")}</span>
         </div>
       )}
 
@@ -624,10 +1174,10 @@ export default function App() {
             </div>
             <div>
               <h1 className="text-xl font-extrabold tracking-tight text-text-bright font-display">
-                HEMOLINK
+                {t("app_title", "HEMOLINK")}
               </h1>
               <p className="text-[10px] text-text-muted font-medium uppercase tracking-widest mt-0.5">
-                Connecting donors. Saving Lifes.
+                {t("app_tagline", "Connecting donors. Saving Lives.")}
               </p>
             </div>
           </div>
@@ -635,29 +1185,29 @@ export default function App() {
           {/* Quick Realtime Statistics Header Panel */}
           <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 sm:gap-x-6 text-xs bg-surface-dark px-3 sm:px-4 py-2 rounded-xl border border-border-dark shrink-0">
             <div className="text-center min-w-[65px] sm:min-w-[70px]">
-              <p className="text-text-muted text-[10px] sm:text-xs whitespace-nowrap">Total Donors</p>
+              <p className="text-text-muted text-[10px] sm:text-xs whitespace-nowrap">{t("total_donors", "Total Donors")}</p>
               <p className="font-extrabold text-brand-red text-xs sm:text-sm font-display leading-tight mt-0.5">{stats.totalDonors}</p>
             </div>
             <div className="h-6 w-[1px] bg-border-dark hidden sm:block"></div>
             <div className="text-center min-w-[65px] sm:min-w-[70px]">
-              <p className="text-text-muted text-[10px] sm:text-xs whitespace-nowrap">Available Now</p>
+              <p className="text-text-muted text-[10px] sm:text-xs whitespace-nowrap">{t("available_now", "Available Now")}</p>
               <p className="font-extrabold text-emerald-400 text-xs sm:text-sm font-display leading-tight mt-0.5">{stats.availableNow}</p>
             </div>
             <div className="h-6 w-[1px] bg-border-dark hidden sm:block"></div>
             <div className="text-center min-w-[65px] sm:min-w-[70px]">
-              <p className="text-text-muted text-[10px] sm:text-xs whitespace-nowrap">Active SOS</p>
+              <p className="text-text-muted text-[10px] sm:text-xs whitespace-nowrap">{t("active_sos", "Active SOS")}</p>
               <p className="font-extrabold text-amber-400 text-xs sm:text-sm font-display leading-tight mt-0.5">{stats.activeRequests}</p>
             </div>
             <div className="h-6 w-[1px] bg-border-dark hidden sm:block"></div>
             <div className="text-center min-w-[65px] sm:min-w-[70px]">
-              <p className="text-text-muted text-[10px] sm:text-xs whitespace-nowrap">Completed Saves</p>
+              <p className="text-text-muted text-[10px] sm:text-xs whitespace-nowrap">{t("completed_saves", "Completed Saves")}</p>
               <p className="font-extrabold text-blue-400 text-xs sm:text-sm font-display leading-tight mt-0.5">{stats.completedSaves}</p>
             </div>
           </div>
 
-          {/* Controls: Theme Toggle & Notification Center & User Status */}
+          {/* Controls: Language Switcher & Notification Center & User Status */}
           <div className="flex items-center gap-3 relative shrink-0">
-            
+            <LanguageSwitcher />
 
             {currentUser && (
               <>
@@ -682,29 +1232,89 @@ export default function App() {
                     <header className="flex items-center justify-between border-b border-border-dark pb-2">
                       <div className="flex items-center gap-1.5 font-bold text-text-bright font-display text-[13px]">
                         <Bell className="w-4 h-4 text-brand-red" />
-                        <span>Live Dispatch Signals</span>
+                        <span>{t("live_signals", "Live Dispatch Signals")}</span>
                       </div>
                       <div className="flex gap-2">
                         <button
                           onClick={() => store.markNotificationsAsRead()}
                           className="text-[10px] text-text-muted hover:text-brand-red font-semibold transition"
                         >
-                          Mark all read
+                          {t("mark_all_read", "Mark all read")}
                         </button>
                         <span className="text-zinc-800">•</span>
                         <button
                           onClick={() => store.clearNotifications()}
                           className="text-[10px] text-text-muted hover:text-brand-red font-semibold transition"
                         >
-                          Clear
+                          {t("clear", "Clear")}
                         </button>
                       </div>
                     </header>
 
+                    {/* Live SOS Alerts & Browser Push Status Section */}
+                    <div className="bg-[#181416] border border-brand-red/30 rounded-xl p-2.5 space-y-2">
+                      <div className="flex items-center justify-between text-[11px]">
+                        <div className="flex items-center gap-1.5 text-text-muted">
+                          <MapPin className="w-3 h-3 text-brand-red shrink-0" />
+                          <span>{t("alerts_city", "Alerts City:")}</span>
+                          <strong className="text-text-bright underline decoration-brand-red">{effectiveUserCity}</strong>
+                        </div>
+                        <span className="text-[9px] bg-brand-red/20 text-rose-300 font-mono font-bold px-1.5 py-0.2 rounded">
+                          HIGH URGENCY
+                        </span>
+                      </div>
+
+                      <div className="flex items-center justify-between gap-2 pt-1.5 border-t border-border-dark/60 text-[10px] font-mono">
+                        <div className="flex items-center gap-1">
+                          {browserPermission === "granted" ? (
+                            <span className="text-emerald-400 flex items-center gap-1">
+                              <Check className="w-3 h-3" />
+                              <span>Push Active</span>
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={handleRequestBrowserPermission}
+                              className="text-rose-400 hover:text-white underline flex items-center gap-1 cursor-pointer"
+                            >
+                              <Bell className="w-3 h-3" />
+                              <span>Enable Desktop Push</span>
+                            </button>
+                          )}
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={handleToggleSound}
+                            className="text-text-subtle hover:text-text-bright flex items-center gap-1 cursor-pointer"
+                            title="Toggle SOS Chime"
+                          >
+                            {soundEnabled ? (
+                              <Volume2 className="w-3 h-3 text-emerald-400" />
+                            ) : (
+                              <VolumeX className="w-3 h-3 text-zinc-500" />
+                            )}
+                            <span>{soundEnabled ? "Sound On" : "Muted"}</span>
+                          </button>
+
+                          <button
+                            id="header-test-sos-btn"
+                            type="button"
+                            onClick={handleTriggerTestSOS}
+                            className="bg-brand-red/25 hover:bg-brand-red text-white px-2 py-0.5 rounded text-[9px] font-bold tracking-wider transition cursor-pointer"
+                            title="Test SOS Toast Alert"
+                          >
+                            {t("test_alert", "Test Alert")}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
                     <div className="max-h-64 overflow-y-auto space-y-2.5 pr-1">
                       {notifications.length === 0 ? (
                         <div className="py-6 text-center text-text-muted font-medium font-sans">
-                          No active match signals received yet.
+                          {t("no_notifications", "No active match signals received yet.")}
                         </div>
                       ) : (
                         notifications.map((n) => (
@@ -748,7 +1358,7 @@ export default function App() {
               <button
                 onClick={() => setShowLogoutConfirm(true)}
                 className="p-2.5 bg-surface-dark border border-border-dark rounded-xl hover:bg-brand-red/10 hover:border-brand-red/30 hover:text-brand-red text-text-muted transition cursor-pointer flex items-center justify-center"
-                title="Log Out"
+                title={t("logout", "Log Out")}
               >
                 <LogOut className="w-4 h-4" />
               </button>
@@ -772,7 +1382,7 @@ export default function App() {
               }`}
             >
               <Search className="w-4 h-4" />
-              <span>Search Donors</span>
+              <span>{t("search_donors", "Search Donors")}</span>
             </button>
             <button
               id="tab-btn-emergency"
@@ -784,7 +1394,7 @@ export default function App() {
               }`}
             >
               <Flame className="w-4 h-4" />
-              <span>Emergency Board</span>
+              <span>{t("emergency_board", "Emergency Board")}</span>
               {emergencies.filter((e) => e.status === "Active").length > 0 && (
                 <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-orange-500 animate-ping"></span>
               )}
@@ -799,7 +1409,7 @@ export default function App() {
               }`}
             >
               <Compass className="w-4 h-4 text-emerald-400" />
-              <span>Blood Banks (Google Maps)</span>
+              <span>{t("blood_banks_maps", "Blood Banks (Google Maps)")}</span>
             </button>
             <button
               id="tab-btn-eligibility"
@@ -811,7 +1421,31 @@ export default function App() {
               }`}
             >
               <ShieldCheck className="w-4 h-4 text-emerald-400" />
-              <span>Donor Eligibility</span>
+              <span>{t("donor_eligibility", "Donor Eligibility")}</span>
+            </button>
+            <button
+              id="tab-btn-calendar"
+              onClick={() => setActiveTab("calendar")}
+              className={`flex items-center gap-2 px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition duration-150 cursor-pointer shrink-0 ${
+                activeTab === "calendar"
+                  ? "bg-brand-red text-white shadow-xl shadow-brand-red/10"
+                  : "text-text-muted hover:text-text-bright hover:bg-surface-dark"
+              }`}
+            >
+              <Calendar className="w-4 h-4 text-rose-400" />
+              <span>{t("schedule_calendar", "Google Calendar")}</span>
+            </button>
+            <button
+              id="tab-btn-contacts"
+              onClick={() => setActiveTab("contacts")}
+              className={`flex items-center gap-2 px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition duration-150 cursor-pointer shrink-0 ${
+                activeTab === "contacts"
+                  ? "bg-brand-red text-white shadow-xl shadow-brand-red/10"
+                  : "text-text-muted hover:text-text-bright hover:bg-surface-dark"
+              }`}
+            >
+              <Users className="w-4 h-4 text-rose-400" />
+              <span>{t("google_contacts", "Google Contacts")}</span>
             </button>
             <button
               id="tab-btn-profile"
@@ -853,7 +1487,7 @@ export default function App() {
                 }`}
               >
                 <Shield className="w-4 h-4" />
-                <span>Admin Console</span>
+                <span>{t("admin_command", "Admin Console")}</span>
               </button>
             )}
           </div>
@@ -864,7 +1498,7 @@ export default function App() {
             className="flex items-center gap-1.5 bg-brand-red hover:bg-brand-red-dark text-white text-[11px] font-extrabold px-3 py-2 rounded-xl cursor-pointer shadow-md tracking-wider uppercase transition shadow-brand-red/25 pulse-critical shrink-0"
           >
             <Plus className="w-3.5 h-3.5 stroke-[3]" />
-            <span>Post SOS Alert</span>
+            <span>{t("request_blood_sos", "Post SOS Alert")}</span>
           </button>
         </div>
       </nav>
@@ -875,13 +1509,13 @@ export default function App() {
         {isEmergencyModalOpen ? (
           /* FULL PAGE SETUP FOR POST SOS ALERT (MAP SHOWN REMOVED) */
           <div className="bg-[#110D0D] border-2 border-brand-red rounded-3xl p-6 sm:p-10 shadow-2xl space-y-8 animate-fade-in max-w-4xl mx-auto">
-            {/* Warning ribbon explaining that MAP has been removed for high-priority dispatch */}
-            <div className="bg-brand-red/10 border border-brand-red/30 text-brand-red px-4 py-3 rounded-2xl flex items-center justify-between gap-3 text-xs font-mono">
+            {/* Google Maps Integration banner */}
+            <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 px-4 py-3 rounded-2xl flex items-center justify-between gap-3 text-xs font-mono">
               <div className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-brand-red animate-ping shrink-0"></span>
-                <span>🚨 IMMERSIVE DISPATCH PIPELINE ACTIVE — DIRECT ROUTE SEVERED FROM INTERACTIVE MAP</span>
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse shrink-0"></span>
+                <span>📍 GOOGLE MAPS INTEGRATED — PRECISE HOSPITAL LOCATION PIN HELPS BLOOD DONORS NAVIGATE DIRECTLY</span>
               </div>
-              <span className="bg-brand-red/20 px-2 py-0.5 rounded font-extrabold uppercase text-[9px] text-zinc-100 hidden sm:inline">Map Offline (Hidden)</span>
+              <span className="bg-emerald-500/20 px-2 py-0.5 rounded font-extrabold uppercase text-[9px] text-emerald-300 hidden sm:inline">GPS Maps Live</span>
             </div>
 
             <header className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-border-dark pb-6">
@@ -900,7 +1534,7 @@ export default function App() {
                 onClick={() => setIsEmergencyModalOpen(false)}
                 className="px-4 py-2 bg-surface-dark border border-border-dark text-text-muted hover:text-text-bright rounded-xl text-xs font-bold transition cursor-pointer"
               >
-                ← Cancel & Return to Map
+                ← Cancel & Return
               </button>
             </header>
 
@@ -958,6 +1592,73 @@ export default function App() {
                   </div>
                 </div>
 
+                {/* Target City Location */}
+                <div className="space-y-2">
+                  <label className="text-[10px] font-mono uppercase tracking-wider text-text-subtle font-bold flex items-center gap-1.5 justify-start">
+                    <Globe className="w-3.5 h-3.5 text-brand-red" />
+                    <span>Target City Location</span>
+                  </label>
+                  <select
+                    value={formCity}
+                    onChange={(e: any) => {
+                      const newCity = e.target.value;
+                      setFormCity(newCity);
+                      const cityKey = newCity.toLowerCase().trim();
+                      if (CITY_COORDINATES[cityKey]) {
+                        setFormHospitalLat(CITY_COORDINATES[cityKey].lat);
+                        setFormHospitalLng(CITY_COORDINATES[cityKey].lng);
+                      }
+                    }}
+                    className="w-full bg-[#18181A] border border-border-dark focus:border-brand-red focus:outline-none rounded-xl px-3 py-3 text-sm text-text-bright cursor-pointer"
+                  >
+                    <option value="Chennai">Chennai</option>
+                    <option value="Mumbai">Mumbai</option>
+                    <option value="Delhi">Delhi</option>
+                    <option value="Bangalore">Bangalore</option>
+                    <option value="Kolkata">Kolkata</option>
+                    <option value="Hyderabad">Hyderabad</option>
+                    <option value="Pune">Pune</option>
+                    <option value="Ahmedabad">Ahmedabad</option>
+                  </select>
+                </div>
+
+                {/* Urgency Level */}
+                <div className="space-y-2">
+                  <label className="text-[10px] font-mono uppercase tracking-wider text-text-subtle font-bold flex items-center gap-1.5 justify-start">
+                    <AlertTriangle className="w-3.5 h-3.5 text-brand-red" />
+                    <span>Urgency Priority Level</span>
+                  </label>
+                  <select
+                    value={formUrgency}
+                    onChange={(e: any) => setFormUrgency(e.target.value)}
+                    className="w-full bg-[#18181A] border border-border-dark focus:border-brand-red focus:outline-none rounded-xl px-3 py-3 text-sm text-text-bright cursor-pointer"
+                  >
+                    <option value="Critical">Critical (Immediate life jeopardy)</option>
+                    <option value="Urgent">Urgent (Aid required within 24 hours)</option>
+                    <option value="Normal">Normal (Assisted replenishment request)</option>
+                  </select>
+                </div>
+
+                {/* Recent Hospitals Dropdown (Stored list of frequently used hospitals in user's city) */}
+                <div className="col-span-1 md:col-span-2">
+                  <RecentHospitalsDropdown
+                    city={formCity}
+                    selectedHospitalName={formHospitalName}
+                    currentAddress={formHospitalAddress}
+                    currentLat={formHospitalLat}
+                    currentLng={formHospitalLng}
+                    currentState={formState}
+                    onSelectHospital={(hosp) => {
+                      setFormHospitalName(hosp.name);
+                      setFormHospitalAddress(hosp.address);
+                      setFormCity(hosp.city);
+                      setFormState(hosp.state);
+                      setFormHospitalLat(hosp.lat);
+                      setFormHospitalLng(hosp.lng);
+                    }}
+                  />
+                </div>
+
                 {/* Hospital Name */}
                 <div className="space-y-2">
                   <label className="text-[10px] font-mono uppercase tracking-wider text-text-subtle font-bold flex items-center gap-1.5 justify-start">
@@ -990,43 +1691,24 @@ export default function App() {
                   />
                 </div>
 
-                {/* City */}
-                <div className="space-y-2">
-                  <label className="text-[10px] font-mono uppercase tracking-wider text-text-subtle font-bold flex items-center gap-1.5 justify-start">
-                    <Globe className="w-3.5 h-3.5 text-brand-red" />
-                    <span>Target City Location</span>
-                  </label>
-                  <select
-                    value={formCity}
-                    onChange={(e: any) => setFormCity(e.target.value)}
-                    className="w-full bg-[#18181A] border border-border-dark focus:border-brand-red focus:outline-none rounded-xl px-3 py-3 text-sm text-text-bright cursor-pointer"
-                  >
-                    <option value="Chennai">Chennai</option>
-                    <option value="Mumbai">Mumbai</option>
-                    <option value="Delhi">Delhi</option>
-                    <option value="Bangalore">Bangalore</option>
-                    <option value="Kolkata">Kolkata</option>
-                    <option value="Hyderabad">Hyderabad</option>
-                    <option value="Pune">Pune</option>
-                    <option value="Ahmedabad">Ahmedabad</option>
-                  </select>
-                </div>
-
-                {/* Urgency Level */}
-                <div className="space-y-2">
-                  <label className="text-[10px] font-mono uppercase tracking-wider text-text-subtle font-bold flex items-center gap-1.5 justify-start">
-                    <AlertTriangle className="w-3.5 h-3.5 text-brand-red" />
-                    <span>Urgency Priority Level</span>
-                  </label>
-                  <select
-                    value={formUrgency}
-                    onChange={(e: any) => setFormUrgency(e.target.value)}
-                    className="w-full bg-[#18181A] border border-border-dark focus:border-brand-red focus:outline-none rounded-xl px-3 py-3 text-sm text-text-bright cursor-pointer"
-                  >
-                    <option value="Critical">Critical (Immediate life jeopardy)</option>
-                    <option value="Urgent">Urgent (Aid required within 24 hours)</option>
-                    <option value="Normal">Normal (Assisted replenishment request)</option>
-                  </select>
+                {/* Interactive Hospital Location & Google Maps Picker */}
+                <div className="col-span-1 md:col-span-2 pt-2">
+                  <HospitalLocationPicker
+                    hospitalName={formHospitalName}
+                    hospitalAddress={formHospitalAddress}
+                    city={formCity}
+                    state={formState}
+                    lat={formHospitalLat}
+                    lng={formHospitalLng}
+                    onChange={(data) => {
+                      setFormHospitalName(data.hospitalName);
+                      setFormHospitalAddress(data.hospitalAddress);
+                      setFormCity(data.city);
+                      setFormState(data.state);
+                      setFormHospitalLat(data.lat);
+                      setFormHospitalLng(data.lng);
+                    }}
+                  />
                 </div>
 
                 {/* Coordinator Name */}
@@ -1120,6 +1802,63 @@ export default function App() {
                     <span>Donor Finder Filters</span>
                   </h3>
 
+                  {/* Show only available donors checkbox directly under Donor Finder Filters */}
+                  <div
+                    id="filter-only-available-box"
+                    className={`mb-4 p-3 rounded-xl border transition ${
+                      searchOnlyAvailable
+                        ? "bg-emerald-950/25 border-emerald-500/40 shadow-sm shadow-emerald-950/40"
+                        : "bg-surface-dark/90 border-border-dark hover:border-border-dark/80"
+                    }`}
+                  >
+                    <label
+                      htmlFor="filter-only-available-checkbox"
+                      className="flex items-start gap-2.5 cursor-pointer select-none group"
+                    >
+                      <input
+                        id="filter-only-available-checkbox"
+                        type="checkbox"
+                        checked={searchOnlyAvailable}
+                        onChange={(e) => {
+                          const val = e.target.checked;
+                          setSearchOnlyAvailable(val);
+                          // Instantly apply filter to immediately reduce noise during active SOS
+                          setAppliedSearch((prev) => ({ ...prev, onlyAvailable: val }));
+                          setSearchExecutedNotice(null);
+                        }}
+                        className="mt-0.5 w-4 h-4 rounded text-brand-red bg-card-dark border-border-dark focus:ring-brand-red focus:ring-1 focus:ring-offset-0 focus:outline-none accent-brand-red cursor-pointer shrink-0"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-2">
+                          <span
+                            className={`text-xs font-semibold leading-tight transition ${
+                              searchOnlyAvailable ? "text-emerald-300 font-bold" : "text-text-bright group-hover:text-white"
+                            }`}
+                          >
+                            Show only available donors
+                          </span>
+                          <span
+                            className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-md flex items-center gap-1 shrink-0 ${
+                              searchOnlyAvailable
+                                ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
+                                : "bg-surface-dark text-text-muted border border-border-dark"
+                            }`}
+                          >
+                            <span
+                              className={`w-1.5 h-1.5 rounded-full ${
+                                searchOnlyAvailable ? "bg-emerald-400 animate-pulse" : "bg-emerald-500"
+                              }`}
+                            ></span>
+                            <span>{stats.availableNow} ready</span>
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-text-subtle mt-1 leading-relaxed">
+                          Hides cooling down or inactive donors to reduce noise when searching during an active SOS.
+                        </p>
+                      </div>
+                    </label>
+                  </div>
+
                   {/* Blood Group quick pills */}
                   <div className="space-y-1.5">
                     <label className="text-[11px] uppercase tracking-wider text-text-muted font-bold">Select compatible blood types</label>
@@ -1189,6 +1928,7 @@ export default function App() {
                   <div className="space-y-1.5 mt-4">
                     <label className="text-[11px] uppercase tracking-wider text-text-muted font-bold">Sorting Preference</label>
                     <select
+                      id="donor-sort-select"
                       value={sortBy}
                       onChange={(e: any) => setSortBy(e.target.value)}
                       className="w-full bg-surface-dark border border-border-dark rounded-xl px-3.5 py-2 text-xs text-text-bright focus:outline-none focus:border-zinc-500 appearance-none bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20isAvailable%3D%22%23A0A0A0%22%20fill%3D%22%23A0A0A0%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E')] bg-[length:9px_9px] bg-[position:right_14px_center] bg-no-repeat"
@@ -1197,6 +1937,37 @@ export default function App() {
                       <option value="name">Donor Name ABC</option>
                       <option value="available">Availability Priority</option>
                     </select>
+                  </div>
+
+                  {/* Search Button below sorting preferences */}
+                  <div className="mt-5 pt-4 border-t border-border-dark space-y-2.5">
+                    <button
+                      id="btn-search-donors"
+                      type="button"
+                      onClick={handleExecuteSearch}
+                      disabled={isSearchSubmitting}
+                      className="w-full py-3.5 px-4 bg-brand-red hover:bg-brand-red-dark text-white font-bold text-xs rounded-xl shadow-lg shadow-brand-red/30 flex items-center justify-center gap-2 transition cursor-pointer font-display uppercase tracking-wider active:scale-[0.98]"
+                    >
+                      <Search className={`w-4 h-4 ${isSearchSubmitting ? "animate-spin" : ""}`} />
+                      <span>{isSearchSubmitting ? "Searching..." : "Search Donors & Side Map"}</span>
+                    </button>
+
+                    {isFilterDirty && (
+                      <p className="text-[10px] text-amber-400 font-mono text-center flex items-center justify-center gap-1.5 bg-amber-400/10 py-1.5 px-2 rounded-lg border border-amber-400/20">
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></span>
+                        Criteria modified — click Search to apply
+                      </p>
+                    )}
+
+                    <button
+                      id="btn-reset-filters"
+                      type="button"
+                      onClick={handleResetFilters}
+                      className="w-full py-1 text-text-subtle hover:text-text-muted text-[11px] font-mono text-center transition cursor-pointer flex items-center justify-center gap-1.5"
+                    >
+                      <RotateCcw className="w-3 h-3" />
+                      <span>Reset all filters</span>
+                    </button>
                   </div>
                 </div>
 
@@ -1212,129 +1983,221 @@ export default function App() {
 
               {/* Map + List switch-board pane */}
               <div className="lg:col-span-8 space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="text-xs">
-                    <span className="text-text-bright font-bold font-display uppercase tracking-wider">Search Results</span>
-                    <p className="text-text-muted">{computedDonors.length} compatible donor profiles active within radius limits.</p>
+                {/* Search status & view controls bar */}
+                <div className="bg-card-dark border border-border-dark p-4 rounded-2xl space-y-3.5 shadow-md">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-border-dark/60 pb-3">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-text-bright font-bold font-display uppercase tracking-wider text-sm">
+                          Search Results ({displayedDonors.length} Donor{displayedDonors.length === 1 ? "" : "s"})
+                        </span>
+                        {appliedSearch.onlyAvailable && (
+                          <span
+                            id="results-available-only-badge"
+                            className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 flex items-center gap-1"
+                          >
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                            <span>Available Only</span>
+                          </span>
+                        )}
+                        {selectedBloodTypeFilter && (
+                          <span className={`text-[11px] font-extrabold px-2 py-0.5 rounded-md ${getGroupSelectorBadge(selectedBloodTypeFilter as BloodGroup)}`}>
+                            Filtered: {selectedBloodTypeFilter}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-text-muted text-xs mt-0.5">
+                        {searchExecutedNotice || (
+                          <>
+                            Active criteria: <strong className="text-text-bright">{appliedSearch.blood === "All" ? "All Blood Groups" : `Group ${appliedSearch.blood}`}</strong>
+                            {appliedSearch.city ? <> in <strong className="text-text-bright">{appliedSearch.city}</strong></> : " near your GPS"}
+                            {" "}• Radius <strong className="text-text-bright">{appliedSearch.radius} km</strong>
+                            {appliedSearch.onlyAvailable && (
+                              <span className="text-emerald-400 font-bold ml-1.5">• Ready Donors Only</span>
+                            )}
+                          </>
+                        )}
+                      </p>
+                    </div>
+
+                    {/* View mode switcher */}
+                    <div className="flex items-center gap-1 bg-surface-dark p-1 rounded-xl border border-border-dark self-start sm:self-auto shrink-0">
+                      <button
+                        id="view-toggle-side-by-side"
+                        type="button"
+                        onClick={() => {
+                          setSearchViewMode("side-by-side");
+                          setMapToggle(false);
+                        }}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold select-none cursor-pointer transition flex items-center gap-1.5 ${
+                          searchViewMode === "side-by-side"
+                            ? "bg-brand-red text-white shadow"
+                            : "text-text-muted hover:text-text-bright"
+                        }`}
+                        title="Side-by-side: Donors list alongside interactive map"
+                      >
+                        <Columns2 className="w-3.5 h-3.5" />
+                        <span>Side-by-Side Map</span>
+                      </button>
+
+                      <button
+                        id="view-toggle-list"
+                        type="button"
+                        onClick={() => {
+                          setSearchViewMode("list");
+                          setMapToggle(false);
+                        }}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold select-none cursor-pointer transition flex items-center gap-1.5 ${
+                          searchViewMode === "list"
+                            ? "bg-brand-red text-white shadow"
+                            : "text-text-muted hover:text-text-bright"
+                        }`}
+                        title="Card grid view"
+                      >
+                        <LayoutGrid className="w-3.5 h-3.5" />
+                        <span>Cards</span>
+                      </button>
+
+                      <button
+                        id="view-toggle-map"
+                        type="button"
+                        onClick={() => {
+                          setSearchViewMode("map");
+                          setMapToggle(true);
+                        }}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold select-none cursor-pointer transition flex items-center gap-1.5 ${
+                          searchViewMode === "map"
+                            ? "bg-brand-red text-white shadow"
+                            : "text-text-muted hover:text-text-bright"
+                        }`}
+                        title="Full interactive map view"
+                      >
+                        <Map className="w-3.5 h-3.5" />
+                        <span>Full Map</span>
+                      </button>
+                    </div>
                   </div>
 
-                  <div className="flex items-center gap-2">
-                    <button
-                      id="view-toggle-list"
-                      onClick={() => setMapToggle(false)}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold select-none border cursor-pointer transition ${
-                        !mapToggle
-                          ? "bg-surface-dark border-border-dark text-white font-bold"
-                          : "bg-surface-dark border-border-dark text-text-muted hover:text-text-bright"
-                      }`}
-                    >
-                      List View
-                    </button>
-                    <button
-                      id="view-toggle-map"
-                      onClick={() => setMapToggle(true)}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold select-none border cursor-pointer transition ${
-                        mapToggle
-                          ? "bg-surface-dark border-border-dark text-white font-bold"
-                          : "bg-surface-dark border-border-dark text-text-muted hover:text-text-bright"
-                      }`}
-                    >
-                      Interactive Map ({donors.length})
-                    </button>
+                  {/* Blood Types of Donors Display section */}
+                  <div>
+                    <div className="flex items-center justify-between gap-2 mb-2">
+                      <span className="text-[10px] uppercase font-bold tracking-wider text-text-subtle font-mono flex items-center gap-1.5">
+                        <Droplet className="w-3.5 h-3.5 text-brand-red fill-brand-red" />
+                        <span>Blood Types of Matching Donors ({bloodTypeBreakdown.length} Types Found)</span>
+                      </span>
+                      {selectedBloodTypeFilter && (
+                        <button
+                          id="btn-clear-blood-type-filter"
+                          type="button"
+                          onClick={() => setSelectedBloodTypeFilter(null)}
+                          className="text-[10px] text-brand-red hover:underline font-mono cursor-pointer font-semibold"
+                        >
+                          Clear blood type filter (show all {computedDonors.length})
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Interactive Blood Types Badges */}
+                    <div className="flex flex-wrap items-center gap-2">
+                      {bloodTypeBreakdown.map((group) => {
+                        const isSelected = selectedBloodTypeFilter === group.bloodGroup;
+                        return (
+                          <button
+                            key={group.bloodGroup}
+                            id={`pill-blood-group-result-${group.bloodGroup}`}
+                            type="button"
+                            onClick={() => {
+                              setSelectedBloodTypeFilter(isSelected ? null : group.bloodGroup);
+                            }}
+                            className={`px-3 py-1.5 rounded-xl border text-xs font-bold font-display transition cursor-pointer flex items-center gap-2 ${
+                              isSelected
+                                ? `${getGroupSelectorBadge(group.bloodGroup)} ring-2 ring-brand-red ring-offset-2 ring-offset-[#18181A] shadow-lg scale-105`
+                                : "bg-surface-dark border-border-dark text-text-bright hover:border-zinc-500"
+                            }`}
+                            title={`Filter results to ${group.bloodGroup} only`}
+                          >
+                            <span className={`px-1.5 py-0.5 rounded text-[10px] font-extrabold ${getGroupSelectorBadge(group.bloodGroup)}`}>
+                              {group.bloodGroup}
+                            </span>
+                            <span>{group.count} donor{group.count === 1 ? "" : "s"}</span>
+                            <span className="text-[10px] text-emerald-400 font-mono">
+                              ({group.availableCount} ready)
+                            </span>
+                          </button>
+                        );
+                      })}
+
+                      {bloodTypeBreakdown.length === 0 && (
+                        <p className="text-xs text-text-subtle italic">No donors found with current filter settings. Try expanding your search radius or modifying location.</p>
+                      )}
+                    </div>
                   </div>
                 </div>
 
-                {mapToggle ? (
-                  /* Map Overlay panel containing Leaflet.js rendering */
-                  <div className="h-[430px] md:h-[530px] w-full">
+                {/* VIEW MODE 1: SIDE-BY-SIDE MAP VIEW */}
+                {searchViewMode === "side-by-side" && (
+                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
+                    {/* Left Column: Scrollable list of donor cards */}
+                    <div className="lg:col-span-6 space-y-3 max-h-[660px] overflow-y-auto pr-1">
+                      {displayedDonors.length === 0 ? (
+                        <div className="bg-card-dark border border-border-dark p-8 text-center rounded-2xl flex flex-col items-center justify-center">
+                          <AlertTriangle className="w-8 h-8 text-amber-500 mb-2" />
+                          <h4 className="font-bold text-text-bright text-sm font-display">No Donors in Current View</h4>
+                          <p className="text-text-muted text-xs max-w-xs mt-1">
+                            No {selectedBloodTypeFilter ? `${selectedBloodTypeFilter} ` : ""}donors found matching your search within {appliedSearch.radius} km.
+                          </p>
+                        </div>
+                      ) : (
+                        displayedDonors.map((donor) => renderDonorCard(donor, true))
+                      )}
+                    </div>
+
+                    {/* Right Column: Interactive Side Map */}
+                    <div className="lg:col-span-6 h-[460px] lg:h-[660px] w-full sticky top-20 rounded-2xl overflow-hidden border border-border-dark shadow-xl">
+                      <div className="absolute top-2 left-2 z-10 bg-base-dark/90 backdrop-blur-md px-2.5 py-1 rounded-lg border border-border-dark text-[10px] font-mono text-text-muted flex items-center gap-1.5 shadow-md">
+                        <Compass className="w-3.5 h-3.5 text-brand-red animate-spin" />
+                        <span>Side-by-Side Map Live ({displayedDonors.length} Donors)</span>
+                      </div>
+                      <MapContainer
+                        donors={displayedDonors}
+                        emergencies={emergencies}
+                        userLat={userGPS.lat}
+                        userLng={userGPS.lng}
+                        onContactDonor={handleInitiateContact}
+                        onContactRequester={handleInitiateRespond}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* VIEW MODE 2: CARDS GRID VIEW */}
+                {searchViewMode === "list" && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {displayedDonors.length === 0 ? (
+                      <div className="col-span-full bg-card-dark border border-border-dark p-12 text-center rounded-2xl flex flex-col items-center justify-center">
+                        <AlertTriangle className="w-10 h-10 text-amber-500 mb-3" />
+                        <h4 className="font-bold text-text-bright text-base font-display">No Available Donors Found</h4>
+                        <p className="text-text-muted text-xs max-w-sm mt-1">
+                          No compatible {appliedSearch.blood !== "All" ? `${appliedSearch.blood} ` : ""}donors are registered within your {appliedSearch.radius}km radius.
+                        </p>
+                      </div>
+                    ) : (
+                      displayedDonors.map((donor) => renderDonorCard(donor, false))
+                    )}
+                  </div>
+                )}
+
+                {/* VIEW MODE 3: FULL MAP VIEW */}
+                {searchViewMode === "map" && (
+                  <div className="h-[520px] md:h-[620px] w-full rounded-2xl overflow-hidden border border-border-dark shadow-xl">
                     <MapContainer
-                      donors={computedDonors}
+                      donors={displayedDonors}
                       emergencies={emergencies}
                       userLat={userGPS.lat}
                       userLng={userGPS.lng}
                       onContactDonor={handleInitiateContact}
                       onContactRequester={handleInitiateRespond}
                     />
-                  </div>
-                ) : (
-                  /* Directory List column */
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    {computedDonors.length === 0 ? (
-                      <div className="col-span-full bg-card-dark border border-border-dark p-12 text-center rounded-2xl flex flex-col items-center justify-center">
-                        <AlertTriangle className="w-10 h-10 text-amber-500 mb-3" />
-                        <h4 className="font-bold text-text-bright text-base font-display">No Available Donors Found</h4>
-                        <p className="text-text-muted text-xs max-w-sm mt-1">
-                          No compatible {searchBlood !== "All" ? `${searchBlood} ` : ""}donors are registered within your {searchRadius}km radius. try expanding your radius slide.
-                        </p>
-                      </div>
-                    ) : (
-                      computedDonors.map((donor) => {
-                        return (
-                          <div
-                            key={donor.uid}
-                            id={`donor-card-${donor.uid}`}
-                            className="bg-card-dark border border-border-dark p-4 rounded-2xl flex flex-col justify-between hover:border-border-dark transition duration-300 shadow-xl"
-                          >
-                            <div>
-                              {/* Header profile details */}
-                              <div className="flex items-start justify-between gap-2.5 mb-3.5">
-                                <div className="flex items-center gap-3">
-                                  <img
-                                    src={donor.profilePhotoUrl || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=200"}
-                                    alt={donor.fullName}
-                                    referrerPolicy="no-referrer"
-                                    className="w-10 h-10 rounded-full object-cover border border-border-dark"
-                                  />
-                                  <div>
-                                    <h4 className="font-bold text-text-bright text-sm tracking-tight leading-tight">{donor.fullName}</h4>
-                                    <p className="text-[10px] text-text-subtle flex items-center gap-1 mt-0.5">
-                                      <MapPin className="w-3 h-3 text-brand-red" />
-                                      <span>{donor.city}, {donor.state}</span>
-                                    </p>
-                                  </div>
-                                </div>
-                                <span className={`text-sm font-extrabold font-display px-2.5 py-1 rounded-xl shadow-inner ${getGroupSelectorBadge(donor.bloodGroup)}`}>
-                                  {donor.bloodGroup}
-                                </span>
-                              </div>
-
-                              {/* Technical and Geography specs */}
-                              <div className="grid grid-cols-2 gap-2 text-[10px] text-text-muted border-t border-border-dark/60 pt-2 pb-1">
-                                <div>
-                                  <span className="text-text-subtle font-bold uppercase tracking-wider block">Est. Proximity</span>
-                                  <span className="font-mono text-text-bright text-xs">{donor.distance} km away</span>
-                                </div>
-                                <div>
-                                  <span className="text-text-subtle font-bold uppercase tracking-wider block">Availability</span>
-                                  <span className={`inline-flex items-center font-semibold ${donor.isAvailable ? "text-emerald-400" : "text-text-subtle"}`}>
-                                    <span className={`w-1.5 h-1.5 rounded-full mr-1.5 ${donor.isAvailable ? "bg-emerald-500 animate-pulse" : "bg-zinc-500"}`}></span>
-                                    {donor.isAvailable ? "Ready" : "Away"}
-                                  </span>
-                                </div>
-                              </div>
-
-                              {/* Graphical Timeline for Donation History & Upcoming Eligibility */}
-                              <DonorGraphicalTimeline donor={donor} compact={true} />
-                            </div>
-
-                            {/* Contact triggering button */}
-                            <button
-                              id={`donor-contact-btn-${donor.uid}`}
-                              disabled={!donor.isAvailable}
-                              onClick={() => handleInitiateContact(donor)}
-                              className={`w-full mt-3 py-2.5 rounded-xl text-xs font-bold font-display cursor-pointer tracking-wider uppercase transition flex items-center justify-center gap-1.5 ${
-                                donor.isAvailable
-                                  ? "bg-surface-dark border border-border-dark hover:border-zinc-500 text-text-bright"
-                                  : "bg-surface-dark border-transparent text-text-subtle cursor-not-allowed"
-                              }`}
-                            >
-                              <Phone className="w-3.5 h-3.5" />
-                              <span>Request Secure Contact</span>
-                            </button>
-                          </div>
-                        );
-                      })
-                    )}
                   </div>
                 )}
               </div>
@@ -1354,14 +2217,74 @@ export default function App() {
                 <p className="text-xs text-text-muted">Public community board displaying active requests requiring immediate attention.</p>
               </div>
 
-              <button
-                id="create-sos-panel-btn"
-                onClick={() => setIsEmergencyModalOpen(true)}
-                className="bg-brand-red hover:bg-brand-red-dark text-white text-xs font-bold py-2.5 px-4 rounded-xl cursor-pointer shadow flex items-center gap-1.5 transition"
-              >
-                <Plus className="w-4 h-4 text-white" />
-                <span>Submit SOS Request</span>
-              </button>
+              <div className="flex items-center gap-2.5">
+                <button
+                  id="test-sos-toast-btn"
+                  type="button"
+                  onClick={handleTriggerTestSOS}
+                  className="bg-[#241A1C] hover:bg-[#302225] border border-brand-red/50 text-rose-300 text-xs font-semibold py-2.5 px-3.5 rounded-xl cursor-pointer shadow flex items-center gap-1.5 transition"
+                  title={`Simulate a new high-urgency SOS alert in ${effectiveUserCity}`}
+                >
+                  <Bell className="w-3.5 h-3.5 text-brand-red animate-pulse" />
+                  <span>Test SOS Toast</span>
+                </button>
+
+                <button
+                  id="create-sos-panel-btn"
+                  onClick={() => setIsEmergencyModalOpen(true)}
+                  className="bg-brand-red hover:bg-brand-red-dark text-white text-xs font-bold py-2.5 px-4 rounded-xl cursor-pointer shadow flex items-center gap-1.5 transition"
+                >
+                  <Plus className="w-4 h-4 text-white" />
+                  <span>Submit SOS Request</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Live SOS Toast & Browser Notification Monitor Banner */}
+            <div className="bg-gradient-to-r from-[#1C1416] via-[#181214] to-[#121012] border border-brand-red/35 rounded-2xl p-3.5 flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs shadow-md">
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <span className="w-2.5 h-2.5 rounded-full bg-brand-red animate-ping shrink-0" />
+                <span className="text-text-muted">
+                  Toast & Browser Alerts armed for: <strong className="text-text-bright underline decoration-brand-red font-bold">{effectiveUserCity}</strong>
+                </span>
+                <span className="text-[10px] uppercase font-mono font-bold bg-brand-red/20 text-rose-300 px-2 py-0.5 rounded border border-brand-red/30">
+                  Critical & Urgent Priority
+                </span>
+              </div>
+
+              <div className="flex items-center gap-3 font-mono text-[11px] self-end md:self-auto">
+                {browserPermission !== "granted" ? (
+                  <button
+                    type="button"
+                    onClick={handleRequestBrowserPermission}
+                    className="text-rose-400 hover:text-white underline flex items-center gap-1.5 cursor-pointer font-bold"
+                  >
+                    <Bell className="w-3.5 h-3.5 text-brand-red animate-bounce" />
+                    <span>Enable Browser Push</span>
+                  </button>
+                ) : (
+                  <span className="text-emerald-400 flex items-center gap-1.5">
+                    <Check className="w-3.5 h-3.5" />
+                    <span>Browser Push Active</span>
+                  </span>
+                )}
+
+                <span className="text-zinc-700">|</span>
+
+                <button
+                  type="button"
+                  onClick={handleToggleSound}
+                  className="text-text-subtle hover:text-text-bright flex items-center gap-1.5 cursor-pointer transition"
+                  title="Toggle Emergency Chime"
+                >
+                  {soundEnabled ? (
+                    <Volume2 className="w-3.5 h-3.5 text-emerald-400" />
+                  ) : (
+                    <VolumeX className="w-3.5 h-3.5 text-zinc-500" />
+                  )}
+                  <span>{soundEnabled ? "Audio On" : "Muted"}</span>
+                </button>
+              </div>
             </div>
 
             {/* List feed */}
@@ -1433,17 +2356,19 @@ export default function App() {
                         </div>
 
                         {/* Title details */}
-                        <div className="flex items-start justify-between gap-4 mb-3">
+                        <div className="flex items-start justify-between gap-4 mb-2">
                           <div>
-                            <h3 className="font-extrabold text-sm text-text-bright leading-tight tracking-tight">
-                              Hospital: {req.hospitalName}
+                            <h3 className="font-extrabold text-sm text-text-bright leading-tight tracking-tight flex items-center gap-1.5">
+                              <Building2 className="w-4 h-4 text-brand-red shrink-0" />
+                              <span>Hospital: {req.hospitalName}</span>
                             </h3>
-                            <p className="text-[11px] text-text-muted mt-1 leading-normal">
-                              Address: {req.hospitalAddress}, {req.city}, {req.state}
+                            <p className="text-[11px] text-text-muted mt-1 leading-normal flex items-start gap-1">
+                              <MapPin className="w-3.5 h-3.5 text-text-subtle shrink-0 mt-0.5" />
+                              <span>{req.hospitalAddress}, {req.city}, {req.state}</span>
                             </p>
                           </div>
 
-                          <div className="text-center">
+                          <div className="text-center shrink-0">
                             <span className="text-[20px] font-extrabold font-display text-brand-red bg-brand-red/10 border border-brand-red/30 px-3.5 py-1 rounded-xl block leading-none">
                               {req.bloodGroupNeeded}
                             </span>
@@ -1453,18 +2378,108 @@ export default function App() {
                           </div>
                         </div>
 
+                        {/* Google Maps Distance & Navigation Bar */}
+                        <div className="bg-[#141212] border border-border-dark p-2.5 rounded-xl flex flex-wrap items-center justify-between gap-2 mb-3">
+                          <div className="flex items-center gap-2 text-xs">
+                            <span className="text-emerald-400 font-mono font-bold flex items-center gap-1">
+                              <Navigation className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
+                              {calculateDistance(userGPS.lat, userGPS.lng, req.location.lat, req.location.lng)} km away
+                            </span>
+                            <span className="text-text-subtle hidden sm:inline">•</span>
+                            <span className="text-[11px] text-text-muted font-mono hidden sm:inline">
+                              GPS: {req.location.lat.toFixed(4)}, {req.location.lng.toFixed(4)}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              id={`view-hospital-map-btn-${req.requestId}`}
+                              onClick={() => setSelectedHospitalForMapModal(req)}
+                              className="px-2.5 py-1 bg-surface-dark hover:bg-[#222] text-rose-300 border border-border-dark hover:border-brand-red/40 rounded-lg text-[11px] font-semibold flex items-center gap-1 transition cursor-pointer"
+                              title="Inspect Hospital on Map & Route preview"
+                            >
+                              <Compass className="w-3.5 h-3.5 text-brand-red" />
+                              <span>Map View</span>
+                            </button>
+
+                            <a
+                              id={`nav-google-maps-btn-${req.requestId}`}
+                              href={`https://www.google.com/maps/dir/?api=1&destination=${req.location.lat},${req.location.lng}&travelmode=driving`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="px-2.5 py-1 bg-brand-red/15 hover:bg-brand-red/25 text-brand-red border border-brand-red/30 rounded-lg text-[11px] font-bold flex items-center gap-1 transition cursor-pointer font-mono"
+                              title="Navigate via Google Maps directions"
+                            >
+                              <Navigation className="w-3 h-3" />
+                              <span>Google Maps ↗</span>
+                            </a>
+                          </div>
+                        </div>
+
                         {/* Patient & Additional information */}
-                        <div className="bg-surface-dark border border-[#262626] p-3 rounded-xl text-xs space-y-2 mb-4">
+                        <div className="bg-surface-dark border border-[#262626] p-3 rounded-xl text-xs space-y-2 mb-3">
                           <p className="text-text-muted">
                             <strong className="text-text-bright text-[11px]">Patient Name:</strong> {req.patientName}
                           </p>
                           <blockquote className="text-text-muted text-[11px] italic leading-relaxed border-l-2 border-border-dark pl-2">
                             "{req.additionalNotes}"
                           </blockquote>
-                          <p className="text-[10px] text-text-subtle">
-                            Submitted by <span className="font-semibold">{req.requesterName}</span>
-                          </p>
+                          <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-border-dark/60">
+                            <p className="text-[10px] text-text-subtle">
+                              Submitted by <span className="font-semibold">{req.requesterName}</span>
+                            </p>
+                            <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                              {req.status === "Fulfilled"
+                                ? "✓ Fulfilled"
+                                : req.acceptedDonorId
+                                ? "🎉 Donor Accepted"
+                                : req.notifiedDonors && req.notifiedDonors.length > 0
+                                ? `📲 ${req.notifiedDonors.length} Donors Notified`
+                                : "⚡ Stage 1 Algorithm Ranked"}
+                            </span>
+                          </div>
                         </div>
+
+                        {/* Donor Acceptance Callout if accepted */}
+                        {req.acceptedDonorId && (
+                          <div className="bg-emerald-950/40 border border-emerald-500/40 rounded-xl p-2.5 mb-3 flex items-center justify-between gap-2 text-xs">
+                            <div className="flex items-center gap-2">
+                              <div className="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-400 font-extrabold flex items-center justify-center text-[10px]">
+                                ✓
+                              </div>
+                              <span className="text-emerald-300 font-bold text-[11px]">
+                                Matched Donor Accepted Requisition
+                              </span>
+                            </div>
+                            {req.status === "Active" && (
+                              <button
+                                type="button"
+                                id={`confirm-donation-feed-btn-${req.requestId}`}
+                                onClick={() => store.confirmDonationAndFulfill(req.requestId, req.acceptedDonorId, req.unitsNeeded)}
+                                className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-2.5 py-1 rounded-lg text-[11px] transition cursor-pointer shadow-md"
+                              >
+                                Confirm Donation & Fulfill
+                              </button>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Smart Donor Matching CTA */}
+                        <button
+                          type="button"
+                          id={`smart-matching-btn-${req.requestId}`}
+                          onClick={() => setSelectedRequestForSmartMatching(req)}
+                          className="w-full mb-3 py-2 px-3 bg-gradient-to-r from-amber-500/15 via-rose-500/10 to-brand-red/15 hover:from-amber-500/25 hover:to-brand-red/25 border border-amber-500/30 text-amber-300 font-bold rounded-xl text-xs flex items-center justify-center gap-2 transition cursor-pointer"
+                        >
+                          <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                          <span>Smart Matching (Review & Confirm Donors)</span>
+                          {req.notifiedDonors && req.notifiedDonors.length > 0 && (
+                            <span className="bg-amber-500/20 text-amber-300 px-1.5 py-0.2 rounded text-[10px] font-mono">
+                              {req.notifiedDonors.length} Notified
+                            </span>
+                          )}
+                        </button>
                       </div>
 
                       {/* Contact Trigger CTAs */}
@@ -1477,6 +2492,14 @@ export default function App() {
                               className="flex-grow bg-brand-red hover:bg-brand-red-dark text-white font-semibold py-2.5 px-4 rounded-xl text-xs transition duration-150 cursor-pointer text-center"
                             >
                               Respond & Connect
+                            </button>
+                            <button
+                              id={`calendar-schedule-btn-${req.requestId}`}
+                              onClick={() => handleScheduleEmergencyToCalendar(req)}
+                              className="bg-surface-dark border border-border-dark hover:border-rose-500/50 hover:bg-rose-500/10 p-2.5 rounded-xl text-rose-400 transition flex items-center justify-center shrink-0 cursor-pointer"
+                              title="Add Emergency Appointment to Google Calendar"
+                            >
+                              <Calendar className="w-4 h-4" />
                             </button>
                             <a
                               id={`whatsapp-share-btn-${req.requestId}`}
@@ -1517,6 +2540,25 @@ export default function App() {
             myDonorProfile={myProfile}
             onNavigateToTab={(t) => setActiveTab(t)}
             onOpenPassModal={(d) => setSelectedPassDonor(d)}
+          />
+        )}
+
+        {/* VIEW 2.9: GOOGLE CALENDAR SCHEDULE & MILESTONES */}
+        {activeTab === "calendar" && (
+          <GoogleCalendarView
+            currentUser={currentUser}
+            emergencies={emergencies}
+            donors={donors}
+          />
+        )}
+
+        {/* VIEW 2.95: GOOGLE CONTACTS & LIFESAVER CIRCLE */}
+        {activeTab === "contacts" && (
+          <GoogleContactsView
+            currentUser={currentUser}
+            emergencies={emergencies}
+            donors={donors}
+            onDonorCreated={() => setDonors(store.getDonors())}
           />
         )}
 
@@ -1565,14 +2607,14 @@ export default function App() {
                         </div>
                       </div>
 
-                      {myProfile && (
+                      {currentUser && (
                         <button
                           id="profile-donor-pass-btn"
-                          onClick={() => setSelectedPassDonor(myProfile)}
+                          onClick={() => setSelectedPassDonor(myProfile || store.ensureDonorProfileForUser(currentUser))}
                           className="w-full mt-2 flex items-center justify-center gap-2 bg-gradient-to-r from-brand-red to-rose-700 hover:from-brand-red-dark hover:to-rose-800 text-white font-extrabold py-2.5 rounded-xl text-xs cursor-pointer transition shadow-lg shadow-brand-red/30 uppercase tracking-wide"
                         >
                           <Award className="w-4 h-4 text-white" />
-                          <span>Generate Donor Identity Pass</span>
+                          <span>View Official Donor Pass</span>
                         </button>
                       )}
 
@@ -1694,7 +2736,7 @@ export default function App() {
                         </div>
                         <button
                           id="view-my-pass-banner-btn"
-                          onClick={() => setSelectedPassDonor(myProfile)}
+                          onClick={() => setSelectedPassDonor(myProfile || store.ensureDonorProfileForUser(currentUser))}
                           className="w-full sm:w-auto px-5 py-2.5 bg-brand-red hover:bg-brand-red-dark text-white rounded-xl text-xs font-extrabold transition cursor-pointer flex items-center justify-center gap-2 shadow-lg shadow-brand-red/30 uppercase tracking-wide shrink-0"
                         >
                           <Award className="w-4 h-4" />
@@ -1702,19 +2744,72 @@ export default function App() {
                         </button>
                       </div>
 
+                      {/* Gamified Milestone & Lifesaver Rank Banner */}
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <h4 className="font-bold text-sm text-text-bright font-display flex items-center gap-2">
+                              <Award className="w-4 h-4 text-brand-red" />
+                              <span>Gamified Milestone & Lifesaver Rank</span>
+                            </h4>
+                            <p className="text-[11px] text-text-muted">
+                              Earn prestigious milestone badges (Bronze for 50 units, Silver for 100, Gold for 500, Diamond for 1000 lives) as you save lives.
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            id="open-milestones-ladder-btn"
+                            onClick={() => {
+                              setSelectedMilestoneDonor(myProfile);
+                              setShowMilestoneModal(true);
+                            }}
+                            className="text-xs font-bold text-brand-red hover:underline flex items-center gap-1 cursor-pointer shrink-0"
+                          >
+                            <span>Milestone Ladder</span>
+                            <ArrowRight className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+
+                        <MilestoneBadge
+                          donor={myProfile}
+                          variant="large"
+                          showProgress={true}
+                          onClick={() => {
+                            setSelectedMilestoneDonor(myProfile);
+                            setShowMilestoneModal(true);
+                          }}
+                        />
+                      </div>
+
                       {/* Donor stats info card */}
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                        <div className="bg-surface-dark border border-border-dark p-4 rounded-xl text-center">
-                          <span className="text-[10px] text-text-subtle font-extrabold uppercase tracking-widest block mb-1">Total Unit Saved Logs</span>
-                          <span className="text-xl font-extrabold font-display text-brand-red tracking-tight">{myProfile.donationCount} Units</span>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                        <div className="bg-surface-dark border border-border-dark p-3.5 rounded-xl text-center">
+                          <span className="text-[10px] text-text-subtle font-extrabold uppercase tracking-widest block mb-1">Milestone Tier</span>
+                          <div className="flex items-center justify-center">
+                            <MilestoneBadge
+                              donor={myProfile}
+                              variant="pill"
+                              onClick={() => {
+                                setSelectedMilestoneDonor(myProfile);
+                                setShowMilestoneModal(true);
+                              }}
+                            />
+                          </div>
                         </div>
-                        <div className="bg-surface-dark border border-border-dark p-4 rounded-xl text-center">
-                          <span className="text-[10px] text-text-subtle font-extrabold uppercase tracking-widest block mb-1">Pincode Coordinate Base</span>
-                          <span className="text-xl font-extrabold font-display text-sky-400 tracking-tight">{myProfile.pincode}</span>
+                        <div className="bg-surface-dark border border-border-dark p-3.5 rounded-xl text-center">
+                          <span className="text-[10px] text-text-subtle font-extrabold uppercase tracking-widest block mb-1">Total Units Saved</span>
+                          <span className="text-xl font-extrabold font-display text-brand-red tracking-tight">
+                            {getDonorSavedUnits(myProfile)} <span className="text-xs font-normal text-text-muted">{getDonorSavedUnits(myProfile) >= 1000 ? "Lives" : "Units"}</span>
+                          </span>
                         </div>
-                        <div className="bg-surface-dark border border-border-dark p-4 rounded-xl text-center justify-between flex flex-col items-center">
-                          <span className="text-[10px] text-text-subtle font-extrabold uppercase tracking-widest block mb-1">Last Timestamp logged</span>
-                          <span className="text-xs font-extrabold text-text-bright block">{myProfile.lastDonationDate || "Never Logged"}</span>
+                        <div className="bg-surface-dark border border-border-dark p-3.5 rounded-xl text-center">
+                          <span className="text-[10px] text-text-subtle font-extrabold uppercase tracking-widest block mb-1">Donation Sessions</span>
+                          <span className="text-xl font-extrabold font-display text-amber-400 tracking-tight">{myProfile.donationCount} Times</span>
+                        </div>
+                        <div className="bg-surface-dark border border-border-dark p-3.5 rounded-xl text-center">
+                          <span className="text-[10px] text-text-subtle font-extrabold uppercase tracking-widest block mb-1">Registered Base</span>
+                          <span className="text-base font-extrabold font-display text-sky-400 tracking-tight block truncate">{myProfile.city}</span>
+                          <span className="text-[10px] font-mono text-text-muted">{myProfile.pincode}</span>
                         </div>
                       </div>
 
@@ -1724,19 +2819,51 @@ export default function App() {
                       </div>
 
                       {/* Simulated action log donation trigger */}
-                      <div className="p-4 bg-surface-dark border border-border-dark rounded-xl space-y-2">
-                        <h4 className="font-bold text-xs text-text-bright font-display">Simulated Live Log Donation</h4>
-                        <p className="text-[11px] text-text-muted leading-relaxed">Have you successfully donated whole blood units recently? Click the log button to increment your saved record logs and tag the completion status!</p>
-                        <button
-                          id="log-donation-btn"
-                          onClick={() => {
-                            store.logMockDonation();
-                            alert("Success! Your global donation count has been incremented.");
-                          }}
-                          className="px-4 py-2 bg-brand-red/10 border border-brand-red/30 hover:bg-brand-red text-brand-red hover:text-text-bright rounded-lg text-xs font-semibold cursor-pointer transition"
-                        >
-                          Log Successful Donation Session
-                        </button>
+                      <div className="p-4 bg-surface-dark border border-border-dark rounded-xl space-y-3">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                          <div>
+                            <h4 className="font-bold text-xs text-text-bright font-display flex items-center gap-1.5">
+                              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                              <span>Simulated Live Log & Gamification Progression</span>
+                            </h4>
+                            <p className="text-[11px] text-text-muted leading-relaxed">
+                              Have you completed a donation? Log your session (+5 units) or open the interactive sandbox to test advancing through Bronze, Silver, Gold, and Diamond tiers!
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedMilestoneDonor(myProfile);
+                              setShowMilestoneModal(true);
+                            }}
+                            className="px-3 py-1.5 bg-surface-dark hover:bg-zinc-800 border border-border-dark text-text-bright rounded-lg text-xs font-bold transition cursor-pointer shrink-0"
+                          >
+                            Gamification Sandbox
+                          </button>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2.5">
+                          <button
+                            id="log-donation-btn"
+                            onClick={() => {
+                              store.logMockDonation(5);
+                              alert("Success! Your global donation count and saved units (+5) have been incremented.");
+                            }}
+                            className="px-4 py-2 bg-brand-red/15 border border-brand-red/40 hover:bg-brand-red text-brand-red hover:text-text-bright rounded-lg text-xs font-semibold cursor-pointer transition"
+                          >
+                            Log Donation Session (+5 Units)
+                          </button>
+                          <button
+                            id="log-quick-plus-50-btn"
+                            onClick={() => {
+                              const currentUnits = getDonorSavedUnits(myProfile);
+                              store.updateDonorSavedUnits(currentUnits + 50);
+                              alert("Milestone Boost! Added +50 saved units to your donor profile.");
+                            }}
+                            className="px-3 py-2 bg-amber-950/30 border border-amber-600/40 hover:bg-amber-800/40 text-amber-300 rounded-lg text-xs font-semibold cursor-pointer transition"
+                          >
+                            +50 Units (Instant Tier Boost)
+                          </button>
+                        </div>
                       </div>
 
                       {/* Remove my profile - Only Admin can deregister */}
@@ -2134,7 +3261,7 @@ export default function App() {
         {/* VIEW 5: ADMIN CONSOLE */}
         {activeTab === "admin" && currentUser?.role === "admin" && (
           <div className="space-y-6">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
                 <h2 className="text-lg font-bold font-display text-amber-500 flex items-center gap-2">
                   <Shield className="w-5 h-5 text-amber-500" />
@@ -2142,6 +3269,16 @@ export default function App() {
                 </h2>
                 <p className="text-xs text-text-muted">High-priority moderation overrides for removing spam and verifying donor identities immediately.</p>
               </div>
+
+              <button
+                id="admin-header-qr-scanner-btn"
+                onClick={() => setShowAdminQrScanner(true)}
+                className="px-4 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-black font-extrabold rounded-xl text-xs flex items-center gap-2.5 shadow-lg shadow-amber-500/25 hover:shadow-amber-500/40 transition cursor-pointer shrink-0 self-start sm:self-auto"
+              >
+                <Camera className="w-4 h-4" />
+                <span>Scan Donor Pass</span>
+                <span className="bg-black/20 text-black px-1.5 py-0.5 rounded text-[10px] font-mono font-bold uppercase">QR Scanner</span>
+              </button>
             </div>
 
             {/* SHOW ONLY FOR SUPER ADMIN: ADMIN PERSON DETAILS BOX */}
@@ -2273,6 +3410,17 @@ export default function App() {
                                       {d.fullName}
                                     </h5>
                                     <p className="text-[10px] text-text-muted font-mono">{d.city}, {d.state} • {d.phone || "No phone"}</p>
+                                    <div className="mt-1 flex items-center">
+                                      <MilestoneBadge
+                                        donor={d}
+                                        variant="pill"
+                                        className="text-[9.5px] py-0.5"
+                                        onClick={() => {
+                                          setSelectedMilestoneDonor(d);
+                                          setShowMilestoneModal(true);
+                                        }}
+                                      />
+                                    </div>
                                   </div>
                                 </div>
 
@@ -2319,14 +3467,25 @@ export default function App() {
 
                               <div className="flex items-center justify-between text-[10px] pt-0.5">
                                 <span className="text-text-subtle font-mono truncate">Email: {d.email || "Verified User"}</span>
-                                <button
-                                  id={`admin-donor-pass-link-${d.uid}`}
-                                  onClick={() => setSelectedPassDonor(d)}
-                                  className="text-amber-400 hover:text-text-bright font-bold font-mono underline cursor-pointer flex items-center gap-1 shrink-0 ml-2"
-                                >
-                                  <Award className="w-3 h-3" />
-                                  <span>View Donor Pass</span>
-                                </button>
+                                <div className="flex items-center gap-2 shrink-0 ml-2">
+                                  <button
+                                    id={`admin-donor-pass-link-${d.uid}`}
+                                    onClick={() => setSelectedPassDonor(d)}
+                                    className="text-amber-400 hover:text-text-bright font-bold font-mono underline cursor-pointer flex items-center gap-1"
+                                  >
+                                    <Award className="w-3 h-3" />
+                                    <span>View Pass</span>
+                                  </button>
+                                  <button
+                                    id={`admin-scan-verify-btn-${d.uid}`}
+                                    onClick={() => setShowAdminQrScanner(true)}
+                                    className="text-amber-300 hover:text-amber-200 bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 px-2 py-0.5 rounded font-bold font-mono cursor-pointer flex items-center gap-1 text-[9.5px]"
+                                    title="Open QR scanner station to verify pass"
+                                  >
+                                    <Camera className="w-2.5 h-2.5" />
+                                    <span>Verify Pass</span>
+                                  </button>
+                                </div>
                               </div>
                             </div>
                           );
@@ -2337,6 +3496,94 @@ export default function App() {
                 </div>
               </div>
             )}
+
+            {/* ADMIN PASS VERIFICATION & QR CHECK-IN STATION */}
+            <div
+              id="admin-qr-checkin-station"
+              className="bg-gradient-to-br from-card-dark via-surface-dark to-card-dark border-2 border-amber-500/40 rounded-2xl p-5 sm:p-6 shadow-xl space-y-4 relative overflow-hidden"
+            >
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-amber-500/20 pb-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 shrink-0 shadow-inner">
+                    <QrCode className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded-full font-mono font-bold uppercase tracking-wider">
+                        INSTANT CLINIC CHECK-IN & VERIFICATION
+                      </span>
+                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                    </div>
+                    <h3 className="text-base sm:text-lg font-bold font-display text-text-bright mt-0.5">
+                      Donor Pass QR Scanner Station
+                    </h3>
+                    <p className="text-xs text-text-muted">
+                      Scan physical ID passes or digital mobile passes to instantly verify WHO 56-day cooldown status, check registration validity, and record on-site blood donation check-ins.
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  id="admin-launch-station-scanner-btn"
+                  onClick={() => setShowAdminQrScanner(true)}
+                  className="px-4 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-black font-extrabold rounded-xl text-xs flex items-center justify-center gap-2 shadow-lg shadow-amber-500/20 transition cursor-pointer shrink-0"
+                >
+                  <Camera className="w-4 h-4" />
+                  <span>Launch QR Scanner</span>
+                </button>
+              </div>
+
+              {/* Quick Action Station Tiles */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div
+                  id="admin-tile-optical-camera"
+                  onClick={() => setShowAdminQrScanner(true)}
+                  className="bg-surface-dark/90 hover:bg-zinc-800/80 border border-border-dark hover:border-amber-500/40 p-4 rounded-xl cursor-pointer transition space-y-2 group"
+                >
+                  <div className="w-8 h-8 rounded-lg bg-amber-500/15 text-amber-400 flex items-center justify-center group-hover:scale-105 transition">
+                    <Camera className="w-4 h-4" />
+                  </div>
+                  <h5 className="text-xs font-bold text-text-bright group-hover:text-amber-400 transition">
+                    Optical Camera Scan
+                  </h5>
+                  <p className="text-[11px] text-text-muted leading-relaxed">
+                    Use laptop webcam or mobile rear camera with live targeting reticle to scan physical donor passes.
+                  </p>
+                </div>
+
+                <div
+                  id="admin-tile-upload-photo"
+                  onClick={() => setShowAdminQrScanner(true)}
+                  className="bg-surface-dark/90 hover:bg-zinc-800/80 border border-border-dark hover:border-amber-500/40 p-4 rounded-xl cursor-pointer transition space-y-2 group"
+                >
+                  <div className="w-8 h-8 rounded-lg bg-sky-500/15 text-sky-400 flex items-center justify-center group-hover:scale-105 transition">
+                    <Upload className="w-4 h-4" />
+                  </div>
+                  <h5 className="text-xs font-bold text-text-bright group-hover:text-sky-400 transition">
+                    Upload Card Photo
+                  </h5>
+                  <p className="text-[11px] text-text-muted leading-relaxed">
+                    Drag and drop or upload a photo or screenshot of a physical or digital donor identity card.
+                  </p>
+                </div>
+
+                <div
+                  id="admin-tile-who-eligibility"
+                  onClick={() => setShowAdminQrScanner(true)}
+                  className="bg-surface-dark/90 hover:bg-zinc-800/80 border border-border-dark hover:border-amber-500/40 p-4 rounded-xl cursor-pointer transition space-y-2 group"
+                >
+                  <div className="w-8 h-8 rounded-lg bg-emerald-500/15 text-emerald-400 flex items-center justify-center group-hover:scale-105 transition">
+                    <ShieldCheck className="w-4 h-4" />
+                  </div>
+                  <h5 className="text-xs font-bold text-text-bright group-hover:text-emerald-400 transition">
+                    WHO Eligibility Check
+                  </h5>
+                  <p className="text-[11px] text-text-muted leading-relaxed">
+                    Automatic 56-day cooldown verification, saved units counter, and 1-click on-site donation logging.
+                  </p>
+                </div>
+              </div>
+            </div>
 
             {/* RECHARTS DONOR REGISTRATION TREND ANALYTICS */}
             <DonorRegistrationTrendChart donors={donors} />
@@ -2483,6 +3730,15 @@ export default function App() {
                             <span className={e.status === "Active" ? "text-amber-500 font-bold" : "text-text-subtle"}>{e.status}</span>
                           </td>
                           <td className="text-right py-2">
+                            <button
+                              id={`admin-smart-match-req-${e.requestId}`}
+                              onClick={() => setSelectedRequestForSmartMatching(e)}
+                              className="text-amber-400 hover:text-amber-300 px-2 py-0.5 rounded text-[10px] font-bold mr-1.5 inline-flex items-center gap-1 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 transition cursor-pointer"
+                              title="Review Ranked Donors & Confirm Notifications"
+                            >
+                              <Sparkles className="w-3 h-3 text-amber-400" />
+                              <span>Review & Match</span>
+                            </button>
                             {e.status === "Active" ? (
                               <button
                                 id={`admin-fulfill-req-${e.requestId}`}
@@ -2747,6 +4003,56 @@ export default function App() {
         />
       )}
 
+      {/* Donor Milestone Gamification Showcase Modal */}
+      {showMilestoneModal && (
+        <MilestoneShowcaseModal
+          isOpen={showMilestoneModal}
+          onClose={() => {
+            setShowMilestoneModal(false);
+            setSelectedMilestoneDonor(null);
+          }}
+          donor={selectedMilestoneDonor || myProfile || store.ensureDonorProfileForUser(currentUser)}
+          isMyProfile={!selectedMilestoneDonor || selectedMilestoneDonor.uid === currentUser?.uid}
+          onSimulateUnits={(newUnits) => {
+            const targetUid = selectedMilestoneDonor?.uid || currentUser?.uid;
+            if (targetUid) {
+              store.updateDonorSavedUnits(newUnits, targetUid);
+              if (selectedMilestoneDonor && selectedMilestoneDonor.uid === targetUid) {
+                setSelectedMilestoneDonor({
+                  ...selectedMilestoneDonor,
+                  savedUnits: newUnits
+                });
+              }
+            }
+          }}
+        />
+      )}
+
+      {/* Admin QR Code Scanner Modal for Pass Verification */}
+      {showAdminQrScanner && currentUser?.role === "admin" && (
+        <AdminQrScannerModal
+          isOpen={showAdminQrScanner}
+          onClose={() => setShowAdminQrScanner(false)}
+          adminUser={currentUser}
+          onOpenPassModal={(donor) => setSelectedPassDonor(donor)}
+        />
+      )}
+
+      {/* Emergency Hospital Google Maps & Navigation Modal */}
+      {selectedHospitalForMapModal && (
+        <HospitalMapModal
+          emergency={selectedHospitalForMapModal}
+          userLat={userGPS.lat}
+          userLng={userGPS.lng}
+          onClose={() => setSelectedHospitalForMapModal(null)}
+          onContactRequester={(req) => handleInitiateRespond(req)}
+          onScheduleCalendar={(req) => handleScheduleEmergencyToCalendar(req)}
+          onNavigateToLiveMap={() => {
+            setActiveTab("maps");
+          }}
+        />
+      )}
+
       {/* Detailed Deregister Confirmation Modal */}
       {myProfile && (
         <DeregisterConfirmationModal
@@ -2759,6 +4065,22 @@ export default function App() {
             if (currentUser) {
               store.removeDonorProfile(currentUser.uid);
             }
+          }}
+        />
+      )}
+
+      {/* Smart Donor Matching & Clinical Dispatch Review Modal */}
+      {selectedRequestForSmartMatching && (
+        <SmartDonorMatchingModal
+          request={selectedRequestForSmartMatching}
+          donors={donors}
+          isOpen={!!selectedRequestForSmartMatching}
+          onClose={() => setSelectedRequestForSmartMatching(null)}
+          onOpenPassModal={(donor) => setSelectedPassDonor(donor)}
+          onOpenChatWithDonor={(donorUid, reqId) => {
+            const chat = store.getOrCreateChat(donorUid, reqId);
+            setActiveChatId(chat.chatId);
+            setActiveTab("messages");
           }}
         />
       )}
@@ -2805,6 +4127,20 @@ export default function App() {
            <p className="text-text-muted text-sm mt-3 max-w-sm text-center">Securely disconnecting your profile and encrypting session data...</p>
         </div>
       )}
+
+      {/* Real-time Toast Notification Overlay for High-Urgency SOS Alerts */}
+      <SOSToastNotification
+        toasts={sosToasts}
+        onDismiss={handleDismissToast}
+        onDismissAll={handleDismissAllToasts}
+        onViewSOS={handleViewSOS}
+        userCity={effectiveUserCity}
+        browserPermission={browserPermission}
+        onRequestPermission={handleRequestBrowserPermission}
+        soundEnabled={soundEnabled}
+        onToggleSound={handleToggleSound}
+        onTestToast={handleTriggerTestSOS}
+      />
 
       {/* Human Footers info details */}
       <footer className="border-t border-border-dark bg-base-dark py-4 text-center text-[10px] text-text-subtle">

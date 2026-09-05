@@ -31,7 +31,7 @@ import {
 interface BloodDonorEligibilityProps {
   currentUser: AppUser | null;
   myDonorProfile?: Donor | null;
-  onNavigateToTab: (tab: "search" | "emergency" | "maps" | "profile" | "chats" | "admin" | "eligibility") => void;
+  onNavigateToTab: (tab: "search" | "emergency" | "maps" | "profile" | "chats" | "admin" | "eligibility" | "calendar") => void;
   onOpenPassModal?: (donor: Donor) => void;
 }
 
@@ -1192,7 +1192,7 @@ export default function BloodDonorEligibility({
               </div>
 
               {/* Action Buttons */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <button
                   id="cooldown-locate-banks-btn"
                   onClick={() => onNavigateToTab("maps")}
@@ -1200,6 +1200,14 @@ export default function BloodDonorEligibility({
                 >
                   <MapPin className="w-4 h-4" />
                   <span>Locate Blood Banks</span>
+                </button>
+                <button
+                  id="cooldown-google-calendar-btn"
+                  onClick={() => onNavigateToTab("calendar")}
+                  className="py-3 bg-card-dark hover:bg-surface-dark text-rose-400 border border-rose-500/30 font-bold text-xs rounded-xl transition cursor-pointer shadow-md flex items-center justify-center gap-2"
+                >
+                  <Calendar className="w-4 h-4" />
+                  <span>Google Calendar</span>
                 </button>
                 <button
                   id="cooldown-check-screen-btn"

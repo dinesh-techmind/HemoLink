@@ -25,6 +25,8 @@ export interface Donor {
   isAvailable: boolean;           // Active status toggle
   lastDonationDate: string | null; // ISO string or null
   donationCount: number;
+  savedUnits?: number;            // Total units / lives saved for gamification milestones
+  distance?: number;              // Calculated distance in km during directory searches
   createdAt: string;              // ISO String format
   updatedAt: string;              // ISO String format
 }
@@ -46,9 +48,49 @@ export interface EmergencyRequest {
   additionalNotes: string;
   status: RequestStatus;
   respondedDonors: string[];       // list of Donor UIDs who clicked respond
+  selectedDonors?: string[];      // Donors selected by admin/requester for notification
+  notifiedDonors?: string[];      // Donors who have been sent notifications
+  acceptedDonorId?: string;       // UID of donor who accepted
+  confirmedDonationAt?: string;   // Timestamp when donation was confirmed
+  flowStage?: MatchingFlowStage;  // Current stage in smart matching & fulfillment pipeline
   createdAt: string;
   expiresAt: string;              // 48 hours relative limit
   shareToken: string;             // WhatsApp token generator link
+}
+
+export type MatchingFlowStage =
+  | "request_submitted"
+  | "smart_matching"
+  | "ranked_donors"
+  | "admin_review"
+  | "notify_donors"
+  | "donor_accepted"
+  | "donation_confirmed"
+  | "request_fulfilled";
+
+export interface RankedDonorMatch {
+  donor: Donor;
+  rank: number;
+  matchScore: number; // 0 - 100 percentage
+  compatibility: {
+    compatible: boolean;
+    isExact: boolean;
+    label: string; // "Exact Match" | "Compatible Group" | "Incompatible"
+  };
+  distanceKm: number;
+  eligibility: {
+    isEligible: boolean;
+    daysSinceLastDonation: number | null;
+    cooldownDaysRemaining: number;
+    reason: string;
+  };
+  scoringBreakdown: {
+    bloodScore: number;       // up to 45 pts
+    distanceScore: number;    // up to 30 pts
+    availabilityScore: number;// up to 15 pts
+    reliabilityScore: number; // up to 10 pts
+  };
+  matchBadges: string[];
 }
 
 export interface Chat {

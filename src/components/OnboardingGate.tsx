@@ -1,8 +1,14 @@
-import React, { useState } from 'react';
-import { Droplet, Mail, ShieldCheck, User, Lock, Eye, ArrowRight, Calendar, Phone } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Droplet, Mail, ShieldCheck, User, Lock, Eye, EyeOff, ArrowRight, Calendar, Phone } from 'lucide-react';
 import { auth } from '../lib/firebase';
 import { GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
 import { store } from '../lib/store';
+import { WORKSPACE_CALENDAR_SCOPES, setCachedAccessToken } from '../lib/google-calendar';
+import TermsAndConditionsModal from './TermsAndConditionsModal';
+import PrivacyPolicyModal from './PrivacyPolicyModal';
+import ForgotPasswordView from './ForgotPasswordView';
+import ResetPasswordView from './ResetPasswordView';
+import VerifyOtpView from './VerifyOtpView';
 
 const RootBg = ({ children }: { children: React.ReactNode }) => (
     <div className="min-h-screen bg-[#750000] relative flex flex-col items-center justify-center p-4 overflow-y-auto" style={{ backgroundImage: 'radial-gradient(circle, rgba(255,255,255,0.08) 1.5px, transparent 1.5px)', backgroundSize: '24px 24px' }}>
@@ -33,7 +39,10 @@ const RootBg = ({ children }: { children: React.ReactNode }) => (
   
   
 export default function OnboardingGate({ onComplete }: { onComplete: () => void }) {
-  const [view, setView] = useState<"login" | "register" | "otp">("login");
+  const [view, setView] = useState<"login" | "register" | "otp" | "forgot-password" | "verify-otp" | "reset-password">("login");
+  const [resetCode, setResetCode] = useState<string>("");
+  const [resetToken, setResetToken] = useState<string>("");
+  const [otpEmail, setOtpEmail] = useState<string>("");
   const [authError, setAuthError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   
@@ -44,7 +53,35 @@ export default function OnboardingGate({ onComplete }: { onComplete: () => void 
   const [phone, setPhone] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [termsAccepted, setTermsAccepted] = useState(false);
+  const [showTermsModal, setShowTermsModal] = useState(false);
+  const [showPrivacyModal, setShowPrivacyModal] = useState(false);
   const [otp, setOtp] = useState(["", "", "", "", "", ""]);
+
+  // Eye toggle visibility states
+  const [showLoginPassword, setShowLoginPassword] = useState(false);
+  const [showRegisterPassword, setShowRegisterPassword] = useState(false);
+  const [showRegisterConfirmPassword, setShowRegisterConfirmPassword] = useState(false);
+
+  // Detect Firebase password reset links or direct paths (?mode=resetPassword&oobCode=...)
+  useEffect(() => {
+    try {
+      const searchParams = new URLSearchParams(window.location.search);
+      const mode = searchParams.get("mode");
+      const oobCode = searchParams.get("oobCode");
+      const path = window.location.pathname.toLowerCase();
+
+      if ((mode === "resetPassword" || path.includes("/reset-password")) && oobCode) {
+        setResetCode(oobCode);
+        setView("reset-password");
+      } else if (path.includes("/verify-otp")) {
+        setView("verify-otp");
+      } else if (path.includes("/forgot-password")) {
+        setView("forgot-password");
+      }
+    } catch (e) {
+      console.warn("Failed to parse navigation parameters", e);
+    }
+  }, []);
   
   
   const finishWithLoading = () => {
@@ -58,21 +95,13 @@ export default function OnboardingGate({ onComplete }: { onComplete: () => void 
   const handleGoogleLogin = async () => {
     try {
       const provider = new GoogleAuthProvider();
-      provider.addScope('https://mail.google.com/');
-      provider.addScope('https://www.googleapis.com/auth/gmail.addons.current.action.compose');
-      provider.addScope('https://www.googleapis.com/auth/gmail.addons.current.message.action');
-      provider.addScope('https://www.googleapis.com/auth/gmail.addons.current.message.metadata');
-      provider.addScope('https://www.googleapis.com/auth/gmail.addons.current.message.readonly');
-      provider.addScope('https://www.googleapis.com/auth/gmail.compose');
-      provider.addScope('https://www.googleapis.com/auth/gmail.insert');
-      provider.addScope('https://www.googleapis.com/auth/gmail.labels');
-      provider.addScope('https://www.googleapis.com/auth/gmail.metadata');
-      provider.addScope('https://www.googleapis.com/auth/gmail.modify');
-      provider.addScope('https://www.googleapis.com/auth/gmail.readonly');
-      provider.addScope('https://www.googleapis.com/auth/gmail.send');
-      provider.addScope('https://www.googleapis.com/auth/gmail.settings.basic');
-      provider.addScope('https://www.googleapis.com/auth/gmail.settings.sharing');
-      provider.addScope('https://www.googleapis.com/auth/drive.file');
+      WORKSPACE_CALENDAR_SCOPES.forEach((scope) => {
+        provider.addScope(scope);
+      });
+      provider.setCustomParameters({
+        prompt: 'consent',
+        access_type: 'offline'
+      });
       
       const result = await signInWithPopup(auth, provider);
       const user = result.user;
@@ -80,6 +109,7 @@ export default function OnboardingGate({ onComplete }: { onComplete: () => void 
       const token = credential?.accessToken;
 
       if (token) {
+        setCachedAccessToken(token);
         (window as any)._googleOAuthToken = token;
       }
       
@@ -147,6 +177,19 @@ export default function OnboardingGate({ onComplete }: { onComplete: () => void 
 
   const handleRegister = (e: React.FormEvent) => {
       e.preventDefault();
+      const cleanPhone = phone.trim();
+      if (!cleanPhone) {
+          setAuthError("Please enter your phone number.");
+          return;
+      }
+      if (cleanPhone.length > 13) {
+          setAuthError("Phone number must be within 13 numbers.");
+          return;
+      }
+      if (password.length < 6) {
+          setAuthError("Password must be at least 6 characters long.");
+          return;
+      }
       if (password !== confirmPassword) {
           setAuthError("Passwords do not match.");
           return;
@@ -228,6 +271,69 @@ export default function OnboardingGate({ onComplete }: { onComplete: () => void 
     );
   }
 
+  if (view === 'forgot-password') {
+    return (
+      <RootBg>
+        <ForgotPasswordView
+          initialEmail={otpEmail || email}
+          onBackToLogin={() => {
+            setView('login');
+            setAuthError("");
+          }}
+          onOtpSent={(submittedEmail) => {
+            setOtpEmail(submittedEmail);
+            setView('verify-otp');
+            setAuthError("");
+          }}
+        />
+      </RootBg>
+    );
+  }
+
+  if (view === 'verify-otp') {
+    return (
+      <RootBg>
+        <VerifyOtpView
+          email={otpEmail || email}
+          onVerified={(token, verifiedEmail) => {
+            setResetToken(token);
+            setOtpEmail(verifiedEmail);
+            setView('reset-password');
+            setAuthError("");
+          }}
+          onBackToEmail={() => {
+            setView('forgot-password');
+            setAuthError("");
+          }}
+        />
+      </RootBg>
+    );
+  }
+
+  if (view === 'reset-password') {
+    return (
+      <RootBg>
+        <ResetPasswordView
+          resetToken={resetToken}
+          resetCode={resetCode}
+          email={otpEmail || email}
+          onBackToLogin={() => {
+            setView('login');
+            setResetToken("");
+            setResetCode("");
+            setAuthError("");
+          }}
+          onRequestNewLink={() => {
+            setView('forgot-password');
+            setResetToken("");
+            setResetCode("");
+            setAuthError("");
+          }}
+        />
+      </RootBg>
+    );
+  }
+
   return (
     <RootBg>
       <div className="bg-white rounded-[2rem] p-6 sm:p-8 shadow-2xl space-y-6">
@@ -243,10 +349,10 @@ export default function OnboardingGate({ onComplete }: { onComplete: () => void 
         </div>
 
         <div className="bg-gray-100 p-1.5 rounded-xl flex items-center">
-          <button onClick={()=>{setView('login'); setAuthError("");}} className={`flex-1 py-2.5 text-xs font-bold rounded-lg flex items-center justify-center gap-2 transition-all ${view === 'login' ? 'bg-[#ba1111] text-white shadow-md' : 'text-gray-500 hover:text-gray-700'}`}>
+          <button onClick={()=>{setView('login'); setAuthError("");}} className={`flex-1 py-2.5 text-xs font-bold rounded-lg flex items-center justify-center gap-2 transition-all cursor-pointer ${view === 'login' ? 'bg-[#ba1111] text-white shadow-md' : 'text-gray-500 hover:text-gray-700'}`}>
             <Lock className="w-3.5 h-3.5" /> LOGIN
           </button>
-          <button onClick={()=>{setView('register'); setAuthError("");}} className={`flex-1 py-2.5 text-xs font-bold rounded-lg flex items-center justify-center gap-2 transition-all ${view === 'register' ? 'bg-[#ba1111] text-white shadow-md' : 'text-gray-500 hover:text-gray-700'}`}>
+          <button onClick={()=>{setView('register'); setAuthError("");}} className={`flex-1 py-2.5 text-xs font-bold rounded-lg flex items-center justify-center gap-2 transition-all cursor-pointer ${view === 'register' ? 'bg-[#ba1111] text-white shadow-md' : 'text-gray-500 hover:text-gray-700'}`}>
             <User className="w-3.5 h-3.5" /> REGISTER
           </button>
         </div>
@@ -254,21 +360,44 @@ export default function OnboardingGate({ onComplete }: { onComplete: () => void 
         {view === 'login' ? (
           <form onSubmit={handleLogin} className="space-y-4">
             <div className="space-y-1.5">
-              <label className="text-xs font-bold text-gray-800 ml-1">Email Address</label>
+              <label htmlFor="login-email-input" className="text-xs font-bold text-gray-800 ml-1">Email Address</label>
               <div className="flex items-center gap-3 border border-gray-200 rounded-xl px-4 py-3 focus-within:border-[#ba1111] focus-within:ring-1 focus-within:ring-[#ba1111] transition-all bg-white">
-                <Mail className="w-4 h-4 text-gray-400" />
-                <input type="email" placeholder="Enter your email address" value={email} onChange={e=>setEmail(e.target.value)} required className="w-full outline-none bg-transparent text-sm text-gray-900 placeholder:text-gray-400" />
+                <Mail className="w-4 h-4 text-gray-400 shrink-0" />
+                <input id="login-email-input" type="email" placeholder="Enter your email address" value={email} onChange={e=>setEmail(e.target.value)} required className="w-full outline-none bg-transparent text-sm text-gray-900 placeholder:text-gray-400" />
               </div>
             </div>
             <div className="space-y-1.5">
               <div className="flex justify-between items-center ml-1 pr-1">
-                <label className="text-xs font-bold text-gray-800">Password</label>
-                <a href="#" className="text-[10px] font-bold text-[#ba1111] hover:underline">Forgot Password?</a>
+                <label htmlFor="login-password-input" className="text-xs font-bold text-gray-800">Password</label>
+                <button
+                  type="button"
+                  id="login-forgot-password-link"
+                  onClick={() => { setView('forgot-password'); setAuthError(""); }}
+                  className="text-[10px] font-bold text-[#ba1111] hover:underline cursor-pointer bg-transparent border-0 p-0"
+                >
+                  Forgot Password?
+                </button>
               </div>
               <div className="flex items-center gap-3 border border-gray-200 rounded-xl px-4 py-3 focus-within:border-[#ba1111] focus-within:ring-1 focus-within:ring-[#ba1111] transition-all bg-white">
-                <Lock className="w-4 h-4 text-gray-400" />
-                <input type="password" placeholder="Enter your password" value={password} onChange={e=>setPassword(e.target.value)} required className="w-full outline-none bg-transparent text-sm text-gray-900 placeholder:text-gray-400" />
-                <Eye className="w-4 h-4 text-gray-400 cursor-pointer hover:text-gray-600" />
+                <Lock className="w-4 h-4 text-gray-400 shrink-0" />
+                <input
+                  id="login-password-input"
+                  type={showLoginPassword ? "text" : "password"}
+                  placeholder="Enter your password"
+                  value={password}
+                  onChange={e=>setPassword(e.target.value)}
+                  required
+                  className="w-full outline-none bg-transparent text-sm text-gray-900 placeholder:text-gray-400"
+                />
+                <button
+                  type="button"
+                  id="toggle-login-password-btn"
+                  onClick={() => setShowLoginPassword(prev => !prev)}
+                  aria-label={showLoginPassword ? "Hide password" : "Show password"}
+                  className="focus:outline-none text-gray-400 hover:text-gray-600 p-1 cursor-pointer transition-colors"
+                >
+                  {showLoginPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
               </div>
             </div>
             
@@ -348,14 +477,6 @@ export default function OnboardingGate({ onComplete }: { onComplete: () => void 
             <p className="text-xs text-gray-500 text-center mt-6">
               Don't have an account? <span onClick={()=>setView('register')} className="text-[#ba1111] font-bold cursor-pointer hover:underline">Create an account</span>
             </p>
-            
-            <div className="mt-6 bg-[#fff4f4] border border-[#ffdfdf] rounded-xl p-3 flex items-center justify-between">
-              <div className="flex items-center gap-2 text-[#ba1111] text-[10px] font-bold">
-                <Droplet className="w-3.5 h-3.5" />
-                Critical deficit: Type O- Needed
-              </div>
-              <span className="bg-white text-[#ba1111] text-[9px] font-bold px-2 py-1 rounded shadow-sm border border-[#ffdfdf]">URGENT</span>
-            </div>
           </form>
         ) : (
           <form onSubmit={handleRegister} className="space-y-4">
@@ -375,41 +496,116 @@ export default function OnboardingGate({ onComplete }: { onComplete: () => void 
                   </div>
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-gray-800 ml-1">Phone Number</label>
+                  <div className="flex justify-between items-center ml-1">
+                    <label htmlFor="register-phone-input" className="text-xs font-bold text-gray-800">Phone Number</label>
+                    <span className={`text-[10px] ${phone.length > 13 ? 'text-red-500 font-bold' : 'text-gray-400'}`}>
+                      {phone.length}/13
+                    </span>
+                  </div>
                   <div className="flex items-center gap-3 border border-gray-200 rounded-xl px-4 py-2.5 focus-within:border-[#ba1111] focus-within:ring-1 focus-within:ring-[#ba1111] transition-all bg-white">
-                    <Phone className="w-4 h-4 text-gray-400" />
-                    <input type="tel" placeholder="+1 (555) 000-0000" value={phone} onChange={e=>setPhone(e.target.value)} required className="w-full outline-none bg-transparent text-sm text-gray-900 placeholder:text-gray-400" />
+                    <Phone className="w-4 h-4 text-gray-400 shrink-0" />
+                    <input
+                      id="register-phone-input"
+                      type="tel"
+                      placeholder="+919876543210"
+                      maxLength={13}
+                      value={phone}
+                      onChange={e => {
+                        const val = e.target.value;
+                        if (val.length <= 13) {
+                          setPhone(val);
+                        }
+                      }}
+                      required
+                      className="w-full outline-none bg-transparent text-sm text-gray-900 placeholder:text-gray-400"
+                    />
                   </div>
                 </div>
             </div>
             <div className="space-y-1.5">
-              <label className="text-xs font-bold text-gray-800 ml-1">Email Address</label>
+              <label htmlFor="register-email-input" className="text-xs font-bold text-gray-800 ml-1">Email Address</label>
               <div className="flex items-center gap-3 border border-gray-200 rounded-xl px-4 py-2.5 focus-within:border-[#ba1111] focus-within:ring-1 focus-within:ring-[#ba1111] transition-all bg-white">
-                <Mail className="w-4 h-4 text-gray-400" />
-                <input type="email" placeholder="john@example.com" value={email} onChange={e=>setEmail(e.target.value)} required className="w-full outline-none bg-transparent text-sm text-gray-900 placeholder:text-gray-400" />
+                <Mail className="w-4 h-4 text-gray-400 shrink-0" />
+                <input id="register-email-input" type="email" placeholder="john@example.com" value={email} onChange={e=>setEmail(e.target.value)} required className="w-full outline-none bg-transparent text-sm text-gray-900 placeholder:text-gray-400" />
               </div>
             </div>
             <div className="space-y-1.5">
-              <label className="text-xs font-bold text-gray-800 ml-1">Password</label>
+              <label htmlFor="register-password-input" className="text-xs font-bold text-gray-800 ml-1">Password</label>
               <div className="flex items-center gap-3 border border-gray-200 rounded-xl px-4 py-2.5 focus-within:border-[#ba1111] focus-within:ring-1 focus-within:ring-[#ba1111] transition-all bg-white">
-                <Lock className="w-4 h-4 text-gray-400" />
-                <input type="password" placeholder="Create a password" value={password} onChange={e=>setPassword(e.target.value)} required className="w-full outline-none bg-transparent text-sm text-gray-900 placeholder:text-gray-400" />
-                <Eye className="w-4 h-4 text-gray-400 cursor-pointer hover:text-gray-600" />
+                <Lock className="w-4 h-4 text-gray-400 shrink-0" />
+                <input
+                  id="register-password-input"
+                  type={showRegisterPassword ? "text" : "password"}
+                  placeholder="Create a password (min 6 chars)"
+                  value={password}
+                  onChange={e=>setPassword(e.target.value)}
+                  required
+                  className="w-full outline-none bg-transparent text-sm text-gray-900 placeholder:text-gray-400"
+                />
+                <button
+                  type="button"
+                  id="toggle-register-password-btn"
+                  onClick={() => setShowRegisterPassword(prev => !prev)}
+                  aria-label={showRegisterPassword ? "Hide password" : "Show password"}
+                  className="focus:outline-none text-gray-400 hover:text-gray-600 p-1 cursor-pointer transition-colors"
+                >
+                  {showRegisterPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
               </div>
             </div>
             <div className="space-y-1.5">
-              <label className="text-xs font-bold text-gray-800 ml-1">Confirm Password</label>
+              <label htmlFor="register-confirm-password-input" className="text-xs font-bold text-gray-800 ml-1">Confirm Password</label>
               <div className="flex items-center gap-3 border border-gray-200 rounded-xl px-4 py-2.5 focus-within:border-[#ba1111] focus-within:ring-1 focus-within:ring-[#ba1111] transition-all bg-white">
-                <Lock className="w-4 h-4 text-gray-400" />
-                <input type="password" placeholder="Confirm your password" value={confirmPassword} onChange={e=>setConfirmPassword(e.target.value)} required className="w-full outline-none bg-transparent text-sm text-gray-900 placeholder:text-gray-400" />
-                <Eye className="w-4 h-4 text-gray-400 cursor-pointer hover:text-gray-600" />
+                <Lock className="w-4 h-4 text-gray-400 shrink-0" />
+                <input
+                  id="register-confirm-password-input"
+                  type={showRegisterConfirmPassword ? "text" : "password"}
+                  placeholder="Confirm your password"
+                  value={confirmPassword}
+                  onChange={e=>setConfirmPassword(e.target.value)}
+                  required
+                  className="w-full outline-none bg-transparent text-sm text-gray-900 placeholder:text-gray-400"
+                />
+                <button
+                  type="button"
+                  id="toggle-register-confirm-password-btn"
+                  onClick={() => setShowRegisterConfirmPassword(prev => !prev)}
+                  aria-label={showRegisterConfirmPassword ? "Hide password" : "Show password"}
+                  className="focus:outline-none text-gray-400 hover:text-gray-600 p-1 cursor-pointer transition-colors"
+                >
+                  {showRegisterConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
               </div>
             </div>
             
             <div className="flex items-start gap-2 mt-4 ml-1">
-              <input type="checkbox" checked={termsAccepted} onChange={e=>setTermsAccepted(e.target.checked)} className="mt-0.5 rounded border-gray-300 text-[#ba1111] focus:ring-[#ba1111]" />
-              <span className="text-[10px] text-gray-500 leading-tight">
-                I agree to the <span className="text-[#ba1111] font-bold cursor-pointer hover:underline">Terms & Conditions</span> and <span className="text-[#ba1111] font-bold cursor-pointer hover:underline">Privacy Policy</span>.
+              <input
+                type="checkbox"
+                id="register-terms-checkbox"
+                checked={termsAccepted}
+                onChange={e => setTermsAccepted(e.target.checked)}
+                className="mt-0.5 rounded border-gray-300 text-[#ba1111] focus:ring-[#ba1111] cursor-pointer"
+              />
+              <span className="text-[10px] text-gray-500 leading-tight select-none">
+                I agree to the{" "}
+                <button
+                  type="button"
+                  id="view-terms-conditions-btn"
+                  onClick={() => setShowTermsModal(true)}
+                  className="text-[#ba1111] font-bold cursor-pointer hover:underline inline p-0 bg-transparent border-0 font-sans text-[10px]"
+                >
+                  Terms & Conditions
+                </button>{" "}
+                and{" "}
+                <button
+                  type="button"
+                  id="view-privacy-policy-btn"
+                  onClick={() => setShowPrivacyModal(true)}
+                  className="text-[#ba1111] font-bold cursor-pointer hover:underline inline p-0 bg-transparent border-0 font-sans text-[10px]"
+                >
+                  Privacy Policy
+                </button>
+                .
               </span>
             </div>
             
@@ -420,6 +616,26 @@ export default function OnboardingGate({ onComplete }: { onComplete: () => void 
             </button>
           </form>
         )}
+
+        {/* Full PDF Terms & Conditions Viewer Modal */}
+        <TermsAndConditionsModal
+          isOpen={showTermsModal}
+          onClose={() => setShowTermsModal(false)}
+          onAccept={() => {
+            setTermsAccepted(true);
+            setAuthError("");
+          }}
+        />
+
+        {/* Full PDF Privacy Policy Viewer Modal */}
+        <PrivacyPolicyModal
+          isOpen={showPrivacyModal}
+          onClose={() => setShowPrivacyModal(false)}
+          onAcknowledge={() => {
+            setTermsAccepted(true);
+            setAuthError("");
+          }}
+        />
       </div>
     </RootBg>
   );

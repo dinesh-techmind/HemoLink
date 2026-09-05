@@ -103,3 +103,114 @@ body {
   font-weight: 600;
   -webkit-font-smoothing: antialiased;
 }
+
+/* ========================================================================= */
+/* Print Styles - Specifically for Donor Identity Pass printing              */
+/* ========================================================================= */
+@media print {
+  /* Hide standard background and unneeded app chrome */
+  html, body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+  }
+
+  /* Universal hide for all page elements when printing */
+  body * {
+    visibility: hidden !important;
+  }
+
+  /* Make the pass printable area and its descendents visible */
+  #donor-pass-printable-area,
+  #donor-pass-printable-area * {
+    visibility: visible !important;
+  }
+
+  /* Reset modal parents to avoid viewport clipping or fixed positioning bugs */
+  #donor-pass-modal-root {
+    position: static !important;
+    display: block !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    overflow: visible !important;
+    width: 100% !important;
+    height: auto !important;
+    background: transparent !important;
+  }
+
+  #donor-pass-modal-window {
+    position: static !important;
+    display: block !important;
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    overflow: visible !important;
+    max-width: 100% !important;
+    max-height: none !important;
+    padding: 0 !important;
+    margin: 0 auto !important;
+  }
+
+  /* Position printable pass container cleanly at the top of the printed page */
+  #donor-pass-printable-area {
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+    margin: 0 auto !important;
+    padding: 12px 0 !important;
+    background: #ffffff !important;
+    display: flex !important;
+    justify-content: center !important;
+    align-items: flex-start !important;
+    box-shadow: none !important;
+    border: none !important;
+  }
+
+  #donor-pass-cards-wrapper {
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: wrap !important;
+    justify-content: center !important;
+    align-items: flex-start !important;
+    gap: 24px !important;
+    width: 100% !important;
+    max-width: none !important;
+    margin: 0 auto !important;
+  }
+
+  /* Hide backdrop, headers, footers, labels, toolbars */
+  .no-print,
+  #donor-pass-printable-area .no-print,
+  #donor-pass-modal-backdrop,
+  #donor-pass-header-toolbar,
+  #donor-pass-actions-toolbar,
+  #donor-pass-edit-modal {
+    display: none !important;
+    visibility: hidden !important;
+  }
+
+  /* High fidelity print color retention & page break protection */
+  #donor-pass-front,
+  #donor-pass-back {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    color-adjust: exact !important;
+    box-shadow: none !important;
+    border: 1px solid #e5e7eb !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    margin: 0 10px 16px 10px !important;
+  }
+
+  @page {
+    size: auto;
+    margin: 8mm;
+  }
+}
+

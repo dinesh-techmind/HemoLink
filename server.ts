@@ -5,6 +5,7 @@ import { GoogleGenAI } from "@google/genai";
 import { createServer as createViteServer } from "vite";
 import { requireAuth, AuthRequest } from "./src/middleware/auth.ts";
 import { getUsers, getOrCreateUser } from "./src/db/users.ts";
+import { generateAndStoreOtp, verifyOtp, resetPasswordWithToken } from "./src/lib/server-otp.ts";
 
 dotenv.config();
 
@@ -12,6 +13,7 @@ const app = express();
 const PORT = 3000;
 
 app.use(express.json());
+app.use(express.static(path.join(process.cwd(), "public")));
 
 // Lazy-initialized Gemini Client
 let aiClient: GoogleGenAI | null = null;
@@ -61,6 +63,92 @@ app.get("/api/users", requireAuth, async (req: AuthRequest, res: express.Respons
   } catch (error: any) {
     console.error("Failed to fetch users:", error);
     res.status(500).json({ error: error.message || "Failed to fetch users" });
+  }
+});
+
+// ==========================================
+// 6-Digit OTP-based Password Recovery Routes
+// ==========================================
+
+// 1. Send OTP (Cryptographically secure, hashed storage, anti-enumeration, rate-limited)
+app.post("/api/forgot-password/send-otp", async (req: express.Request, res: express.Response) => {
+  try {
+    const { email } = req.body || {};
+    if (!email || typeof email !== "string") {
+      return res.status(400).json({ error: "Please enter your email address." });
+    }
+
+    const cleanEmail = email.trim().toLowerCase();
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(cleanEmail)) {
+      return res.status(400).json({ error: "Please enter a valid email address." });
+    }
+
+    const result = await generateAndStoreOtp(cleanEmail);
+    if (!result.success) {
+      return res.status(429).json({ error: result.message, cooldown: result.cooldown });
+    }
+
+    res.json({
+      success: true,
+      message: result.message,
+    });
+  } catch (err: any) {
+    console.error("Error generating OTP:", err);
+    res.status(500).json({ error: "Unable to process password reset. Please try again later." });
+  }
+});
+
+// 2. Verify OTP (Checks expiration, used state, max 5 attempts, hashes submitted OTP)
+app.post("/api/forgot-password/verify-otp", async (req: express.Request, res: express.Response) => {
+  try {
+    const { email, otp } = req.body || {};
+    if (!email || typeof email !== "string") {
+      return res.status(400).json({ error: "Email address is required." });
+    }
+    if (!otp || typeof otp !== "string" || !/^\d{6}$/.test(otp.trim())) {
+      return res.status(400).json({ error: "Please enter a valid 6-digit verification code." });
+    }
+
+    const result = await verifyOtp(email, otp);
+    if (!result.success) {
+      return res.status(400).json({ error: result.message });
+    }
+
+    res.json({
+      success: true,
+      message: result.message,
+      resetToken: result.resetToken,
+    });
+  } catch (err: any) {
+    console.error("Error verifying OTP:", err);
+    res.status(500).json({ error: "Something went wrong during verification. Please try again." });
+  }
+});
+
+// 3. Reset Password (Verifies short-lived single-use authorization token & updates Firebase Auth)
+app.post("/api/forgot-password/reset-password", async (req: express.Request, res: express.Response) => {
+  try {
+    const { resetToken, newPassword } = req.body || {};
+    if (!resetToken || typeof resetToken !== "string") {
+      return res.status(400).json({ error: "Missing or invalid password reset authorization token." });
+    }
+    if (!newPassword || typeof newPassword !== "string" || newPassword.length < 6) {
+      return res.status(400).json({ error: "Password must be at least 6 characters long." });
+    }
+
+    const result = await resetPasswordWithToken(resetToken, newPassword);
+    if (!result.success) {
+      return res.status(400).json({ error: result.message });
+    }
+
+    res.json({
+      success: true,
+      message: result.message,
+    });
+  } catch (err: any) {
+    console.error("Error resetting password:", err);
+    res.status(500).json({ error: "Failed to reset password. Please try again." });
   }
 });
 
