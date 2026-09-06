@@ -43,6 +43,7 @@ import {
 } from "lucide-react";
 import { MilestoneBadge } from "./MilestoneBadge";
 import { getDonorSavedUnits, getMilestoneTier } from "../lib/milestones";
+import { HemolinkIcon } from "./HemolinkLogo";
 
 interface DonorIdentityPassModalProps {
   donor: Donor;
@@ -737,34 +738,18 @@ SUPPORT: support@blooddonationapp.com
                 >
                   {/* Top White Header with Logo & Brand */}
                   <div className="pt-3 sm:pt-3.5 px-4 sm:px-5 pb-2 sm:pb-2.5 flex items-center justify-start gap-2.5 sm:gap-3 bg-white z-10">
-                    {/* Official Blood Donation Emblem */}
-                    <div className="w-9 h-9 sm:w-10 sm:h-10 shrink-0 relative flex items-center justify-center">
-                      <svg viewBox="0 0 100 100" className="w-full h-full drop-shadow-sm">
-                        {/* Outer hands curve */}
-                        <path
-                          d="M 20 60 C 20 82, 45 92, 50 92 C 55 92, 80 82, 80 60 C 80 50, 75 42, 68 45 C 62 48, 62 60, 50 78 C 38 60, 38 48, 32 45 C 25 42, 20 50, 20 60 Z"
-                          fill="#C4161C"
-                        />
-                        {/* Blood droplet */}
-                        <path
-                          d="M 50 15 C 50 15, 26 48, 26 62 C 26 76, 36 86, 50 86 C 64 86, 74 76, 74 62 C 74 48, 50 15, 50 15 Z"
-                          fill="#E5232A"
-                        />
-                        {/* Inner white heart inside droplet */}
-                        <path
-                          d="M 50 50 C 47 45, 41 45, 38 48 C 35 52, 35 57, 38 61 L 50 72 L 62 61 C 65 57, 65 52, 62 48 C 59 45, 53 45, 50 50 Z"
-                          fill="#FFFFFF"
-                        />
-                      </svg>
+                    {/* Official Hemolink Emblem */}
+                    <div className="w-9 h-9 sm:w-10 sm:h-10 shrink-0 relative flex items-center justify-center p-0.5">
+                      <HemolinkIcon className="w-full h-full text-[#9B1B28]" />
                     </div>
 
                     <div className="leading-tight text-left min-w-0">
-                      <h2 className="text-[15px] sm:text-[17px] font-black text-black tracking-tight uppercase font-display truncate">
-                        BLOOD DONATION
+                      <h2 className="text-[15px] sm:text-[17px] font-black text-[#9B1B28] tracking-tight uppercase font-display truncate">
+                        HEMOLINK
                       </h2>
                       <p className="text-[10px] sm:text-[11px] font-bold">
                         <span className="text-gray-800">Donate Blood, </span>
-                        <span className="text-[#C4161C] font-extrabold">Save Lives</span>
+                        <span className="text-[#9B1B28] font-extrabold">Save Lives</span>
                       </p>
                     </div>
                   </div>

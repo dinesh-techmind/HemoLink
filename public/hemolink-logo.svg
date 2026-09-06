@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 460 120" fill="none">
+  <!-- Icon Group -->
+  <g transform="translate(10, 10)">
+    <!-- Droplet Loop -->
+    <path d="M 50,22 C 50,22 28,52 28,68 C 28,80 38,90 50,90 C 62,90 72,80 72,68 C 72,52 50,22 50,22 Z" 
+          stroke="#9B1B28" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+    <!-- Left Heart Wing -->
+    <path d="M 50,22 C 41,12 30,8 19,12 C 7,16 2,30 4,43 C 6,56 16,66 28,68" 
+          stroke="#9B1B28" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+    <!-- Right Heart Wing -->
+    <path d="M 50,22 C 59,12 70,8 81,12 C 93,16 98,30 96,43 C 94,56 84,66 72,68" 
+          stroke="#9B1B28" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+    <!-- Inner Highlight -->
+    <path d="M 34,64 C 34,74 40,82 47,84" 
+          stroke="#9B1B28" stroke-width="2.6" stroke-linecap="round"/>
+  </g>
+  <!-- Wordmark Text -->
+  <text x="135" y="74" 
+        font-family="system-ui, -apple-system, BlinkMacSystemFont, "Syne", "DM Sans", "Segoe UI", Roboto, sans-serif" 
+        font-size="46" 
+        font-weight="800" 
+        letter-spacing="2.5" 
+        fill="#9B1B28">HEMOLINK</text>
+</svg>

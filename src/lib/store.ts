@@ -2,6 +2,7 @@ import { Donor, EmergencyRequest, Chat, Message, AppUser, BloodGroup, Gender, Ur
 import { db, auth, handleFirestoreError, OperationType } from "./firebase";
 import { collection, onSnapshot, doc, setDoc, deleteDoc, getDocs } from "firebase/firestore";
 import { onAuthStateChanged, signInAnonymously } from "firebase/auth";
+import { getMilestoneTier } from "./milestones";
 
 // Pre-seeded audit logs for admin accountability verification
 const SEED_ADMIN_LOGS: AdminAuditLog[] = [
@@ -1095,6 +1096,77 @@ export class AppStore {
     this.saveToStorage();
     this.notify();
     this.syncToFirestore("donors", profile.uid, profile);
+  }
+
+  public recordClinicalBloodDonation(params: {
+    donorUid?: string;
+    centerName: string;
+    donationType: "Whole Blood" | "Platelets" | "Plasma" | "Double Red Cells";
+    unitsDonated: number;
+    donationDate?: string;
+    notes?: string;
+  }) {
+    const targetUid = params.donorUid || this.currentUser?.uid;
+    let profile = this.donors.find((d) => d.uid === targetUid);
+    if (!profile && this.currentUser && (!params.donorUid || this.currentUser.uid === params.donorUid)) {
+      profile = this.ensureDonorProfileForUser(this.currentUser);
+    }
+    if (!profile) throw new Error("No donor profile registered");
+
+    // Clinical unit translation:
+    // Whole Blood (1 blood unit) yields PRBC, Platelets & FFP = 10 saved units (up to 3 lives saved)
+    // Platelets (Apheresis) = 15 saved units
+    // Double Red Cells = 20 saved units
+    // Plasma = 10 saved units
+    let multiplier = 10;
+    if (params.donationType === "Double Red Cells") multiplier = 20;
+    else if (params.donationType === "Platelets") multiplier = 15;
+    else if (params.donationType === "Plasma") multiplier = 10;
+
+    const unitsEarned = Math.max(1, params.unitsDonated) * multiplier;
+    const currentUnits = typeof profile.savedUnits === "number" ? profile.savedUnits : (profile.donationCount || 0) * 10;
+    const newTotalUnits = currentUnits + unitsEarned;
+
+    const prevTier = getMilestoneTier(currentUnits);
+    const newTier = getMilestoneTier(newTotalUnits);
+
+    const donationDate = params.donationDate || new Date().toISOString().split("T")[0];
+    profile.donationCount = (profile.donationCount || 0) + 1;
+    profile.savedUnits = newTotalUnits;
+    profile.lastDonationDate = donationDate; // Resets WHO 56-day cooldown interval
+    profile.updatedAt = new Date().toISOString();
+
+    if (newTier.id !== prevTier.id) {
+      this.addNotification({
+        title: `🏆 NEW MILESTONE BADGE UNLOCKED: ${newTier.name.toUpperCase()}!`,
+        message: `Congratulations! Your verified blood donation elevated you to ${newTotalUnits} cumulative saved units. You have earned the ${newTier.name} badge (${newTier.rankTitle})!`,
+        type: "In-App",
+        recipient: profile.fullName
+      });
+    } else {
+      this.addNotification({
+        title: `🩸 DONATION RECORDED: +${unitsEarned} SAVED UNITS`,
+        message: `Successfully verified donation of ${params.unitsDonated} unit(s) (${params.donationType}) at ${params.centerName}. Cumulative standing: ${newTotalUnits} units saved.`,
+        type: "In-App",
+        recipient: profile.fullName
+      });
+    }
+
+    this.saveToStorage();
+    this.notify();
+    this.syncToFirestore("donors", profile.uid, profile);
+
+    this.logAdminAction(
+      "Clinical Blood Donation Logged",
+      `Verified blood donation for ${profile.fullName} (${profile.bloodGroup}): ${params.unitsDonated} unit(s) of ${params.donationType} at ${params.centerName}. Earned +${unitsEarned} units (Total: ${newTotalUnits} units, Milestone: ${newTier.name}).`
+    );
+
+    return {
+      newTotalUnits,
+      unitsEarned,
+      newTier,
+      isTierUpgraded: newTier.id !== prevTier.id
+    };
   }
 
   public logMockDonation(unitsToAdd: number = 5, targetDonorUid?: string) {

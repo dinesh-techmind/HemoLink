@@ -20,8 +20,10 @@ import SOSToastNotification, { SOSToastItem } from "./components/SOSToastNotific
 import { LanguageSwitcher } from "./components/LanguageSwitcher";
 import { MilestoneBadge } from "./components/MilestoneBadge";
 import { MilestoneShowcaseModal } from "./components/MilestoneShowcaseModal";
+import { LogClinicalDonationModal } from "./components/LogClinicalDonationModal";
 import { AdminQrScannerModal } from "./components/AdminQrScannerModal";
 import { SmartDonorMatchingModal } from "./components/SmartDonorMatchingModal";
+import { HemolinkIcon, HemolinkLogo } from "./components/HemolinkLogo";
 import { getDonorSavedUnits, getMilestoneTier, getNextMilestoneProgress } from "./lib/milestones";
 import { useLanguage } from "./lib/i18n";
 import { saveRecentHospital } from "./lib/hospitals";
@@ -34,6 +36,7 @@ import {
 import { scheduleEmergencyDrive, getCachedAccessToken } from "./lib/google-calendar";
 import {
   Droplet,
+  Heart,
   MapPin,
   Search,
   MessageSquare,
@@ -130,6 +133,7 @@ export default function App() {
   // Selected donor for Milestone Gamification Showcase modal
   const [selectedMilestoneDonor, setSelectedMilestoneDonor] = useState<Donor | null>(null);
   const [showMilestoneModal, setShowMilestoneModal] = useState<boolean>(false);
+  const [showLogDonationModal, setShowLogDonationModal] = useState<boolean>(false);
 
   // Admin QR Code Scanner Modal State
   const [showAdminQrScanner, setShowAdminQrScanner] = useState<boolean>(false);
@@ -1168,12 +1172,12 @@ export default function App() {
       {/* Main header block */}
       <header className="border-b border-border-dark bg-card-dark py-3 px-4 md:px-8">
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-3 cursor-pointer" onClick={() => setActiveTab("search")}>
-            <div className="w-10 h-10 rounded-xl bg-brand-red flex items-center justify-center shadow-lg shadow-brand-red/20">
-              <Droplet className="w-6 h-6 text-white fill-white animate-bounce" />
+          <div className="flex items-center gap-3 cursor-pointer group" onClick={() => setActiveTab("search")}>
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#9B1B28] to-[#5a0f17] flex items-center justify-center p-1.5 shadow-lg shadow-brand-red/25 border border-red-500/20 group-hover:scale-105 transition-transform duration-200">
+              <HemolinkIcon className="w-full h-full text-white" highlightColor="#ffaaaa" />
             </div>
             <div>
-              <h1 className="text-xl font-extrabold tracking-tight text-text-bright font-display">
+              <h1 className="text-xl font-extrabold tracking-wider text-text-bright font-display leading-tight uppercase">
                 {t("app_title", "HEMOLINK")}
               </h1>
               <p className="text-[10px] text-text-muted font-medium uppercase tracking-widest mt-0.5">
@@ -2818,51 +2822,55 @@ export default function App() {
                         <DonorGraphicalTimeline donor={myProfile} compact={false} />
                       </div>
 
-                      {/* Simulated action log donation trigger */}
+                      {/* Automated Blood Units & Milestone Badges Tracking */}
                       <div className="p-4 bg-surface-dark border border-border-dark rounded-xl space-y-3">
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                           <div>
                             <h4 className="font-bold text-xs text-text-bright font-display flex items-center gap-1.5">
-                              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                              <span>Simulated Live Log & Gamification Progression</span>
+                              <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                              <span>Automated Milestone Badges & Verified Blood Units</span>
                             </h4>
-                            <p className="text-[11px] text-text-muted leading-relaxed">
-                              Have you completed a donation? Log your session (+5 units) or open the interactive sandbox to test advancing through Bronze, Silver, Gold, and Diamond tiers!
+                            <p className="text-[11px] text-text-muted leading-relaxed mt-0.5">
+                              Milestone badges are awarded strictly automatically based on verified blood units donated. Each whole blood donation provides 10 saved units (protecting up to 3 emergency lives).
                             </p>
                           </div>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setSelectedMilestoneDonor(myProfile);
-                              setShowMilestoneModal(true);
-                            }}
-                            className="px-3 py-1.5 bg-surface-dark hover:bg-zinc-800 border border-border-dark text-text-bright rounded-lg text-xs font-bold transition cursor-pointer shrink-0"
-                          >
-                            Gamification Sandbox
-                          </button>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <button
+                              type="button"
+                              id="log-clinical-donation-btn"
+                              onClick={() => setShowLogDonationModal(true)}
+                              className="px-3.5 py-2 bg-brand-red hover:bg-brand-red-dark text-white rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5 shadow shadow-brand-red/20"
+                            >
+                              <Heart className="w-3.5 h-3.5 fill-white" />
+                              <span>Record Verified Blood Donation</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedMilestoneDonor(myProfile);
+                                setShowMilestoneModal(true);
+                              }}
+                              className="px-3 py-2 bg-surface-dark hover:bg-zinc-800 border border-border-dark text-text-bright rounded-lg text-xs font-bold transition cursor-pointer shrink-0"
+                            >
+                              View Tiers & Ladder
+                            </button>
+                          </div>
                         </div>
-                        <div className="flex flex-wrap items-center gap-2.5">
-                          <button
-                            id="log-donation-btn"
-                            onClick={() => {
-                              store.logMockDonation(5);
-                              alert("Success! Your global donation count and saved units (+5) have been incremented.");
-                            }}
-                            className="px-4 py-2 bg-brand-red/15 border border-brand-red/40 hover:bg-brand-red text-brand-red hover:text-text-bright rounded-lg text-xs font-semibold cursor-pointer transition"
-                          >
-                            Log Donation Session (+5 Units)
-                          </button>
-                          <button
-                            id="log-quick-plus-50-btn"
-                            onClick={() => {
-                              const currentUnits = getDonorSavedUnits(myProfile);
-                              store.updateDonorSavedUnits(currentUnits + 50);
-                              alert("Milestone Boost! Added +50 saved units to your donor profile.");
-                            }}
-                            className="px-3 py-2 bg-amber-950/30 border border-amber-600/40 hover:bg-amber-800/40 text-amber-300 rounded-lg text-xs font-semibold cursor-pointer transition"
-                          >
-                            +50 Units (Instant Tier Boost)
-                          </button>
+
+                        <div className="pt-2 border-t border-border-dark/60 flex flex-wrap items-center justify-between gap-2 text-[11px]">
+                          <div className="flex items-center gap-2">
+                            <span className="text-text-subtle font-mono text-[10px] uppercase">Current Standing:</span>
+                            <span className="font-extrabold text-brand-red font-display">
+                              {getDonorSavedUnits(myProfile)} Saved Units
+                            </span>
+                            <span className="text-zinc-600">•</span>
+                            <span className="text-amber-400 font-bold">
+                              {getMilestoneTier(getDonorSavedUnits(myProfile)).name} Badge
+                            </span>
+                          </div>
+                          <span className="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                            ✓ System-Calculated & Tamper-Proof
+                          </span>
                         </div>
                       </div>
 
@@ -4013,17 +4021,17 @@ export default function App() {
           }}
           donor={selectedMilestoneDonor || myProfile || store.ensureDonorProfileForUser(currentUser)}
           isMyProfile={!selectedMilestoneDonor || selectedMilestoneDonor.uid === currentUser?.uid}
-          onSimulateUnits={(newUnits) => {
-            const targetUid = selectedMilestoneDonor?.uid || currentUser?.uid;
-            if (targetUid) {
-              store.updateDonorSavedUnits(newUnits, targetUid);
-              if (selectedMilestoneDonor && selectedMilestoneDonor.uid === targetUid) {
-                setSelectedMilestoneDonor({
-                  ...selectedMilestoneDonor,
-                  savedUnits: newUnits
-                });
-              }
-            }
+        />
+      )}
+
+      {/* Record Verified Clinical Blood Donation Modal */}
+      {showLogDonationModal && myProfile && (
+        <LogClinicalDonationModal
+          isOpen={showLogDonationModal}
+          onClose={() => setShowLogDonationModal(false)}
+          donor={myProfile}
+          onSuccess={() => {
+            // Updated automatically via store subscription
           }}
         />
       )}
@@ -4145,7 +4153,10 @@ export default function App() {
       {/* Human Footers info details */}
       <footer className="border-t border-border-dark bg-base-dark py-4 text-center text-[10px] text-text-subtle">
         <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <p>© 2026 HEMOLINK • Connecting donors. Saving Lifes. Crafted with precision for life preservation.</p>
+          <p className="flex items-center justify-center gap-1.5">
+            <HemolinkIcon className="w-3.5 h-3.5 text-brand-red inline shrink-0" />
+            <span>© 2026 HEMOLINK • Connecting donors. Saving Lives. Crafted with precision for life preservation.</span>
+          </p>
           <p className="font-mono">Server node status: ONLINE (Port 3000) • ISO UTC Coordinates: 2026-06-04 14:11Z</p>
         </div>
       </footer>

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
-import { Lock, Eye, EyeOff, ArrowRight, Droplet, CheckCircle2, AlertCircle, RefreshCw } from "lucide-react";
+import { Lock, Eye, EyeOff, ArrowRight, CheckCircle2, AlertCircle, RefreshCw } from "lucide-react";
+import { HemolinkIcon } from "./HemolinkLogo";
 import { auth } from "../lib/firebase";
 import { confirmPasswordReset, verifyPasswordResetCode } from "firebase/auth";
 
@@ -214,8 +215,8 @@ export default function ResetPasswordView({
     <div className="bg-white rounded-[2rem] p-6 sm:p-8 shadow-2xl space-y-6 max-w-md w-full">
       {/* Header */}
       <div className="text-center space-y-1 relative">
-        <div className="w-12 h-12 bg-[#fff4f4] rounded-2xl flex items-center justify-center mx-auto mb-3 border border-[#ffdfdf]">
-          <Droplet className="w-6 h-6 text-[#ba1111]" />
+        <div className="w-13 h-13 bg-[#fff4f4] rounded-2xl flex items-center justify-center mx-auto mb-3 border border-[#ffdfdf] p-2 shadow-sm">
+          <HemolinkIcon className="w-9 h-9 text-[#9B1B28]" />
         </div>
         <h1 className="text-2xl font-extrabold tracking-tight text-gray-900 font-display">
           Create New Password

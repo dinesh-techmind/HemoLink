@@ -14,7 +14,6 @@ interface MilestoneShowcaseModalProps {
   isOpen: boolean;
   onClose: () => void;
   donor?: Partial<Donor> | null;
-  onSimulateUnits?: (newUnits: number) => void;
   isMyProfile?: boolean;
 }
 
@@ -22,7 +21,6 @@ export const MilestoneShowcaseModal: React.FC<MilestoneShowcaseModalProps> = ({
   isOpen,
   onClose,
   donor,
-  onSimulateUnits,
   isMyProfile = false
 }) => {
   if (!isOpen) return null;
@@ -233,67 +231,40 @@ export const MilestoneShowcaseModal: React.FC<MilestoneShowcaseModalProps> = ({
             </div>
           </div>
 
-          {/* Interactive Unit Simulator for Testing Gamification */}
-          {onSimulateUnits && (
-            <div className="p-4 bg-surface-dark border border-border-dark rounded-2xl space-y-3">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h5 className="font-bold text-xs text-text-bright font-display flex items-center gap-1.5">
-                    <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                    <span>Interactive Milestone Gamification Sandbox</span>
-                  </h5>
-                  <p className="text-[10px] text-text-muted">
-                    Quickly preview how donor profiles and badges dynamically upgrade across Bronze (50), Silver (100), Gold (500), and Diamond (1000).
-                  </p>
-                </div>
+          {/* Automated Milestone Tracking Notice */}
+          <div className="p-4 bg-surface-dark border border-border-dark rounded-2xl space-y-2.5">
+            <div className="flex items-center gap-2">
+              <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+              <h5 className="font-bold text-xs text-text-bright font-display">
+                Automated Clinical Milestone Progression
+              </h5>
+            </div>
+            <p className="text-[11px] text-text-muted leading-relaxed">
+              Milestone tiers cannot be modified manually. Badges are strictly awarded by the system as blood units are registered through verified blood donations at certified blood banks or emergency SOS fulfillments.
+            </p>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
+              <div className="bg-[#121214] p-2.5 rounded-xl border border-[#222] text-center">
+                <span className="text-[9px] font-mono text-text-subtle uppercase block">Bronze Tier</span>
+                <span className="text-xs font-bold text-amber-400">50 Units</span>
+                <span className="text-[9px] text-text-muted block">~5 donations</span>
               </div>
-
-              <div className="flex flex-wrap items-center gap-2 pt-1">
-                <button
-                  type="button"
-                  onClick={() => onSimulateUnits(50)}
-                  className="px-3 py-1.5 rounded-xl bg-amber-900/40 border border-amber-700/60 text-amber-300 font-bold text-[11px] hover:bg-amber-800/60 transition cursor-pointer"
-                >
-                  Set Bronze (50 Units)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onSimulateUnits(100)}
-                  className="px-3 py-1.5 rounded-xl bg-slate-700/40 border border-slate-400/60 text-slate-200 font-bold text-[11px] hover:bg-slate-600/60 transition cursor-pointer"
-                >
-                  Set Silver (100 Units)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onSimulateUnits(500)}
-                  className="px-3 py-1.5 rounded-xl bg-yellow-900/40 border border-yellow-500/60 text-yellow-300 font-bold text-[11px] hover:bg-yellow-800/60 transition cursor-pointer"
-                >
-                  Set Gold (500 Units)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onSimulateUnits(1000)}
-                  className="px-3 py-1.5 rounded-xl bg-cyan-900/40 border border-cyan-400/60 text-cyan-200 font-bold text-[11px] hover:bg-cyan-800/60 transition cursor-pointer"
-                >
-                  Set Diamond (1000 Lives)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onSimulateUnits(units + 10)}
-                  className="px-3 py-1.5 rounded-xl bg-brand-red/20 border border-brand-red/40 text-rose-300 font-bold text-[11px] hover:bg-brand-red/40 transition cursor-pointer"
-                >
-                  +10 Saved Units
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onSimulateUnits(Math.max(0, units - 25))}
-                  className="px-3 py-1.5 rounded-xl bg-surface-dark border border-border-dark text-text-subtle font-mono text-[11px] hover:text-text-bright transition cursor-pointer"
-                >
-                  -25 Units
-                </button>
+              <div className="bg-[#121214] p-2.5 rounded-xl border border-[#222] text-center">
+                <span className="text-[9px] font-mono text-text-subtle uppercase block">Silver Tier</span>
+                <span className="text-xs font-bold text-slate-300">100 Units</span>
+                <span className="text-[9px] text-text-muted block">~10 donations</span>
+              </div>
+              <div className="bg-[#121214] p-2.5 rounded-xl border border-[#222] text-center">
+                <span className="text-[9px] font-mono text-text-subtle uppercase block">Gold Tier</span>
+                <span className="text-xs font-bold text-yellow-400">500 Units</span>
+                <span className="text-[9px] text-text-muted block">~50 donations</span>
+              </div>
+              <div className="bg-[#121214] p-2.5 rounded-xl border border-[#222] text-center">
+                <span className="text-[9px] font-mono text-text-subtle uppercase block">Diamond Legend</span>
+                <span className="text-xs font-bold text-cyan-300">1,000+ Lives</span>
+                <span className="text-[9px] text-text-muted block">Apex Honor</span>
               </div>
             </div>
-          )}
+          </div>
 
           {/* Blood Donation Impact Statement */}
           <div className="p-3.5 bg-brand-red/10 border border-brand-red/30 rounded-2xl flex items-center gap-3">

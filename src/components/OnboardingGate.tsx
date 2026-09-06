@@ -9,26 +9,20 @@ import PrivacyPolicyModal from './PrivacyPolicyModal';
 import ForgotPasswordView from './ForgotPasswordView';
 import ResetPasswordView from './ResetPasswordView';
 import VerifyOtpView from './VerifyOtpView';
+import { HemolinkIcon } from './HemolinkLogo';
 
 const RootBg = ({ children }: { children: React.ReactNode }) => (
     <div className="min-h-screen bg-[#750000] relative flex flex-col items-center justify-center p-4 overflow-y-auto" style={{ backgroundImage: 'radial-gradient(circle, rgba(255,255,255,0.08) 1.5px, transparent 1.5px)', backgroundSize: '24px 24px' }}>
       <div className="absolute top-4 left-4 sm:top-6 sm:left-8 flex items-center gap-3 text-white z-0">
-        <div className="flex items-center gap-1.5 font-bold text-sm tracking-widest">
-          <span className="w-1.5 h-1.5 bg-white rounded-full"></span>
-          HEMOLINK
+        <div className="flex items-center gap-2 font-extrabold text-sm tracking-wider">
+          <HemolinkIcon className="w-5 h-5 text-white" />
+          <span>HEMOLINK</span>
         </div>
         <div className="bg-[#ba1111] text-white text-[9px] px-2 py-0.5 rounded-sm font-extrabold tracking-widest uppercase shadow-sm">EMERGENCY HUB</div>
       </div>
       <div className="absolute top-4 right-4 sm:top-6 sm:right-8 flex items-center gap-2 text-white/90 text-xs font-semibold z-0">
         <ShieldCheck className="w-4 h-4" />
         <span className="hidden sm:inline">Secure Medical Dispatch</span>
-      </div>
-      <div className="absolute bottom-4 left-4 sm:bottom-6 sm:left-8 text-white/70 text-[10px] font-medium z-0 hidden sm:block">
-        © 2024 Hemolink Emergency Network. Priority Clinical Protocol.
-      </div>
-      <div className="absolute bottom-4 right-4 sm:bottom-6 sm:right-8 flex items-center gap-1.5 text-white/90 text-[10px] font-semibold z-0 hidden sm:flex">
-        <Lock className="w-3.5 h-3.5" />
-        Encrypted HIPAA-Ready <span className="text-white/40">|</span> Response Time: &lt;3m
       </div>
       <div className="relative z-10 w-full max-w-[420px] my-16">
         {children}
@@ -232,10 +226,12 @@ export default function OnboardingGate({ onComplete }: { onComplete: () => void 
       <div className="min-h-screen bg-gradient-to-br from-[#ffecec] to-white relative flex items-center justify-center p-4">
         <div className="bg-white rounded-3xl p-8 sm:p-10 max-w-md w-full shadow-2xl space-y-6">
           <div className="text-center space-y-3">
-             <div className="flex justify-center text-[#ba1111] mb-2">
-                <Droplet className="w-6 h-6" />
+             <div className="flex justify-center mb-1">
+                <div className="w-14 h-14 bg-red-50 rounded-2xl flex items-center justify-center p-2.5 border border-red-100 shadow-sm">
+                  <HemolinkIcon className="w-full h-full text-[#9B1B28]" />
+                </div>
              </div>
-             <h2 className="text-xl font-bold text-[#ba1111] tracking-wide">HEMOLINK</h2>
+             <h2 className="text-2xl font-extrabold text-[#9B1B28] tracking-wider font-display uppercase">HEMOLINK</h2>
              <h1 className="text-2xl font-extrabold text-gray-900">Verify Your Account</h1>
              <p className="text-xs text-gray-500">We've sent a verification code to<br/><span className="font-bold text-gray-800">{email || "b******@gmail.com"}</span></p>
           </div>
@@ -337,14 +333,18 @@ export default function OnboardingGate({ onComplete }: { onComplete: () => void 
   return (
     <RootBg>
       <div className="bg-white rounded-[2rem] p-6 sm:p-8 shadow-2xl space-y-6">
-        <div className="text-center space-y-1 relative">
-           <div className="w-12 h-12 bg-[#fff4f4] rounded-2xl flex items-center justify-center mx-auto mb-4 border border-[#ffdfdf]">
-              <Droplet className="w-6 h-6 text-[#ba1111]" />
+        <div className="text-center relative pb-1">
+           <div className="flex items-center justify-center gap-3.5 mb-2">
+              <div className="w-14 h-14 bg-[#fff4f4] rounded-2xl flex items-center justify-center p-2.5 border border-[#ffdfdf] shadow-sm">
+                 <HemolinkIcon className="w-full h-full text-[#9B1B28]" />
+              </div>
+              <div className="text-left">
+                 <h1 className="text-3xl font-extrabold tracking-wider text-[#9B1B28] font-display leading-none uppercase">
+                     HEMOLINK
+                 </h1>
+                 <p className="text-[#ba1111] font-bold text-xs mt-1.5">Connecting Blood. Saving Lives.</p>
+              </div>
            </div>
-           <h1 className="text-2xl font-extrabold tracking-tight text-[#ba1111] font-display">
-               HEMOLINK
-           </h1>
-           <p className="text-[#ba1111] font-bold text-xs mt-1">Connecting Blood. Saving Lives.</p>
            <p className="text-[10px] text-gray-500 font-medium">Your connection can save a life.</p>
         </div>
 
