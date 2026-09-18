@@ -91,7 +91,11 @@ import {
   Camera,
   Smartphone,
   Upload,
-  Users
+  Users,
+  Menu,
+  MoreHorizontal,
+  ChevronDown,
+  ChevronUp
 } from "lucide-react";
 
 // List of standard blood groups
@@ -130,6 +134,10 @@ export default function App() {
   const [emergencies, setEmergencies] = useState<EmergencyRequest[]>(store.getEmergencies());
   const [chats, setChats] = useState<Chat[]>(store.getChats());
   const [activeTab, setActiveTab] = useState<"search" | "emergency" | "maps" | "eligibility" | "calendar" | "contacts" | "profile" | "chats" | "admin">("search");
+
+  // Mobile UX Responsive Navigation & Filter States
+  const [showMobileMoreMenu, setShowMobileMoreMenu] = useState<boolean>(false);
+  const [isMobileFiltersOpen, setIsMobileFiltersOpen] = useState<boolean>(false);
 
   // Dark & Light Theme Mode State
   
@@ -1300,205 +1308,285 @@ export default function App() {
       )}
 
       {/* Main header block */}
-      <header className="border-b border-border-dark bg-card-dark py-3 px-4 md:px-8">
-        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-3 cursor-pointer group" onClick={() => setActiveTab("search")}>
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#9B1B28] to-[#5a0f17] flex items-center justify-center p-1.5 shadow-lg shadow-brand-red/25 border border-red-500/20 group-hover:scale-105 transition-transform duration-200">
-              <HemolinkIcon className="w-full h-full text-white" highlightColor="#ffaaaa" />
+      <header className="border-b border-border-dark bg-card-dark py-2.5 sm:py-3 px-3 sm:px-4 md:px-8 relative">
+        <div className="max-w-7xl mx-auto">
+          {/* Mobile View Header: Top row with logo, language, notification bell, profile & logout */}
+          <div className="sm:hidden flex items-center justify-between gap-2 mb-2">
+            <div className="flex items-center gap-2 cursor-pointer" onClick={() => setActiveTab("search")}>
+              <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-[#9B1B28] to-[#5a0f17] flex items-center justify-center p-1 shadow-md shadow-brand-red/25 border border-red-500/20">
+                <HemolinkIcon className="w-full h-full text-white" highlightColor="#ffaaaa" />
+              </div>
+              <div>
+                <div className="flex items-center gap-1.5">
+                  <h1 className="text-base font-black tracking-wider text-text-bright font-display leading-tight uppercase">
+                    {t("app_title", "HEMOLINK")}
+                  </h1>
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                </div>
+                <p className="text-[9px] text-text-muted font-medium uppercase tracking-wider">
+                  {t("app_tagline", "Connecting donors. Saving Lives.")}
+                </p>
+              </div>
             </div>
-            <div>
-              <h1 className="text-xl font-extrabold tracking-wider text-text-bright font-display leading-tight uppercase">
-                {t("app_title", "HEMOLINK")}
-              </h1>
-              <p className="text-[10px] text-text-muted font-medium uppercase tracking-widest mt-0.5">
-                {t("app_tagline", "Connecting donors. Saving Lives.")}
-              </p>
-            </div>
-          </div>
 
-          {/* Quick Realtime Statistics Header Panel */}
-          <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 sm:gap-x-6 text-xs bg-surface-dark px-3 sm:px-4 py-2 rounded-xl border border-border-dark shrink-0">
-            <div className="text-center min-w-[65px] sm:min-w-[70px]">
-              <p className="text-text-muted text-[10px] sm:text-xs whitespace-nowrap">{t("total_donors", "Total Donors")}</p>
-              <p className="font-extrabold text-brand-red text-xs sm:text-sm font-display leading-tight mt-0.5">{stats.totalDonors}</p>
-            </div>
-            <div className="h-6 w-[1px] bg-border-dark hidden sm:block"></div>
-            <div className="text-center min-w-[65px] sm:min-w-[70px]">
-              <p className="text-text-muted text-[10px] sm:text-xs whitespace-nowrap">{t("available_now", "Available Now")}</p>
-              <p className="font-extrabold text-emerald-400 text-xs sm:text-sm font-display leading-tight mt-0.5">{stats.availableNow}</p>
-            </div>
-            <div className="h-6 w-[1px] bg-border-dark hidden sm:block"></div>
-            <div className="text-center min-w-[65px] sm:min-w-[70px]">
-              <p className="text-text-muted text-[10px] sm:text-xs whitespace-nowrap">{t("active_sos", "Active SOS")}</p>
-              <p className="font-extrabold text-amber-400 text-xs sm:text-sm font-display leading-tight mt-0.5">{stats.activeRequests}</p>
-            </div>
-            <div className="h-6 w-[1px] bg-border-dark hidden sm:block"></div>
-            <div className="text-center min-w-[65px] sm:min-w-[70px]">
-              <p className="text-text-muted text-[10px] sm:text-xs whitespace-nowrap">{t("completed_saves", "Completed Saves")}</p>
-              <p className="font-extrabold text-blue-400 text-xs sm:text-sm font-display leading-tight mt-0.5">{stats.completedSaves}</p>
-            </div>
-          </div>
+            <div className="flex items-center gap-1.5">
+              <LanguageSwitcher />
 
-          {/* Controls: Language Switcher & Notification Center & User Status */}
-          <div className="flex items-center gap-3 relative shrink-0">
-            <LanguageSwitcher />
-
-            {currentUser && (
-              <>
-                {/* Notification Center Trigger Bell button */}
-                <div className="relative">
+              {currentUser && (
+                <>
                   <button
-                    id="header-notification-bell"
+                    id="mobile-header-notification-bell"
                     onClick={() => setShowNotificationCenter(!showNotificationCenter)}
-                    className="p-2.5 bg-surface-dark border border-border-dark rounded-xl hover:bg-surface-dark text-text-subtle hover:text-text-bright transition cursor-pointer relative"
+                    className="p-2 bg-surface-dark border border-border-dark rounded-xl text-text-subtle hover:text-text-bright transition cursor-pointer relative"
                   >
-                    <Bell className="w-5 h-5 animate-pulse" />
+                    <Bell className="w-4 h-4" />
                     {notifications.filter((n) => !n.read).length > 0 && (
-                      <span className="absolute -top-1 -right-1 bg-brand-red text-white text-[10px] w-5 h-5 rounded-full flex items-center justify-center font-black border-2 border-card-dark">
+                      <span className="absolute -top-1 -right-1 bg-brand-red text-white text-[9px] w-4 h-4 rounded-full flex items-center justify-center font-black border border-card-dark">
                         {notifications.filter((n) => !n.read).length}
                       </span>
                     )}
                   </button>
 
-                {/* Dropdown UI */}
-                {showNotificationCenter && (
-                  <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-[#121214] border border-border-dark shadow-2xl rounded-2xl p-4 z-50 space-y-3.5 text-xs text-text-bright">
-                    <header className="flex items-center justify-between border-b border-border-dark pb-2">
-                      <div className="flex items-center gap-1.5 font-bold text-text-bright font-display text-[13px]">
-                        <Bell className="w-4 h-4 text-brand-red" />
-                        <span>{t("live_signals", "Live Dispatch Signals")}</span>
-                      </div>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => store.markNotificationsAsRead()}
-                          className="text-[10px] text-text-muted hover:text-brand-red font-semibold transition"
-                        >
-                          {t("mark_all_read", "Mark all read")}
-                        </button>
-                        <span className="text-zinc-800">•</span>
-                        <button
-                          onClick={() => store.clearNotifications()}
-                          className="text-[10px] text-text-muted hover:text-brand-red font-semibold transition"
-                        >
-                          {t("clear", "Clear")}
-                        </button>
-                      </div>
-                    </header>
+                  <button
+                    onClick={() => setActiveTab("profile")}
+                    className="w-7 h-7 rounded-full bg-brand-red/20 border border-brand-red/40 flex items-center justify-center font-bold text-brand-red text-xs transition active:scale-95 cursor-pointer"
+                    title="My Profile"
+                  >
+                    {currentUser.fullName ? currentUser.fullName[0].toUpperCase() : "U"}
+                  </button>
 
-                    {/* Live SOS Alerts & Browser Push Status Section */}
-                    <div className="bg-[#181416] border border-brand-red/30 rounded-xl p-2.5 space-y-2">
-                      <div className="flex items-center justify-between text-[11px]">
-                        <div className="flex items-center gap-1.5 text-text-muted">
-                          <MapPin className="w-3 h-3 text-brand-red shrink-0" />
-                          <span>{t("alerts_city", "Alerts City:")}</span>
-                          <strong className="text-text-bright underline decoration-brand-red">{effectiveUserCity}</strong>
-                        </div>
-                        <span className="text-[9px] bg-brand-red/20 text-rose-300 font-mono font-bold px-1.5 py-0.2 rounded">
-                          HIGH URGENCY
+                  <button
+                    onClick={() => setShowLogoutConfirm(true)}
+                    className="p-2 bg-surface-dark border border-border-dark rounded-xl text-text-muted hover:text-brand-red transition cursor-pointer"
+                    title={t("logout", "Log Out")}
+                  >
+                    <LogOut className="w-4 h-4" />
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* Mobile Quick Stats Strip */}
+          <div className="sm:hidden grid grid-cols-4 gap-1 bg-surface-dark/95 border border-border-dark p-2 rounded-xl text-center">
+            <div className="px-1">
+              <p className="text-text-muted text-[9px] font-mono uppercase truncate">{t("total_donors", "Donors")}</p>
+              <p className="font-extrabold text-brand-red text-xs font-display leading-tight mt-0.5">{stats.totalDonors}</p>
+            </div>
+            <div className="border-l border-border-dark/60 px-1">
+              <p className="text-text-muted text-[9px] font-mono uppercase truncate">{t("available_now", "Ready")}</p>
+              <p className="font-extrabold text-emerald-400 text-xs font-display leading-tight mt-0.5">{stats.availableNow}</p>
+            </div>
+            <div className="border-l border-border-dark/60 px-1">
+              <p className="text-text-muted text-[9px] font-mono uppercase truncate">{t("active_sos", "SOS")}</p>
+              <p className="font-extrabold text-amber-400 text-xs font-display leading-tight mt-0.5">{stats.activeRequests}</p>
+            </div>
+            <div className="border-l border-border-dark/60 px-1">
+              <p className="text-text-muted text-[9px] font-mono uppercase truncate">{t("completed_saves", "Saved")}</p>
+              <p className="font-extrabold text-blue-400 text-xs font-display leading-tight mt-0.5">{stats.completedSaves}</p>
+            </div>
+          </div>
+
+          {/* Desktop View Header */}
+          <div className="hidden sm:flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3 cursor-pointer group" onClick={() => setActiveTab("search")}>
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#9B1B28] to-[#5a0f17] flex items-center justify-center p-1.5 shadow-lg shadow-brand-red/25 border border-red-500/20 group-hover:scale-105 transition-transform duration-200">
+                <HemolinkIcon className="w-full h-full text-white" highlightColor="#ffaaaa" />
+              </div>
+              <div>
+                <h1 className="text-xl font-extrabold tracking-wider text-text-bright font-display leading-tight uppercase">
+                  {t("app_title", "HEMOLINK")}
+                </h1>
+                <p className="text-[10px] text-text-muted font-medium uppercase tracking-widest mt-0.5">
+                  {t("app_tagline", "Connecting donors. Saving Lives.")}
+                </p>
+              </div>
+            </div>
+
+            {/* Quick Realtime Statistics Header Panel */}
+            <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 sm:gap-x-6 text-xs bg-surface-dark px-3 sm:px-4 py-2 rounded-xl border border-border-dark shrink-0">
+              <div className="text-center min-w-[65px] sm:min-w-[70px]">
+                <p className="text-text-muted text-[10px] sm:text-xs whitespace-nowrap">{t("total_donors", "Total Donors")}</p>
+                <p className="font-extrabold text-brand-red text-xs sm:text-sm font-display leading-tight mt-0.5">{stats.totalDonors}</p>
+              </div>
+              <div className="h-6 w-[1px] bg-border-dark hidden sm:block"></div>
+              <div className="text-center min-w-[65px] sm:min-w-[70px]">
+                <p className="text-text-muted text-[10px] sm:text-xs whitespace-nowrap">{t("available_now", "Available Now")}</p>
+                <p className="font-extrabold text-emerald-400 text-xs sm:text-sm font-display leading-tight mt-0.5">{stats.availableNow}</p>
+              </div>
+              <div className="h-6 w-[1px] bg-border-dark hidden sm:block"></div>
+              <div className="text-center min-w-[65px] sm:min-w-[70px]">
+                <p className="text-text-muted text-[10px] sm:text-xs whitespace-nowrap">{t("active_sos", "Active SOS")}</p>
+                <p className="font-extrabold text-amber-400 text-xs sm:text-sm font-display leading-tight mt-0.5">{stats.activeRequests}</p>
+              </div>
+              <div className="h-6 w-[1px] bg-border-dark hidden sm:block"></div>
+              <div className="text-center min-w-[65px] sm:min-w-[70px]">
+                <p className="text-text-muted text-[10px] sm:text-xs whitespace-nowrap">{t("completed_saves", "Completed Saves")}</p>
+                <p className="font-extrabold text-blue-400 text-xs sm:text-sm font-display leading-tight mt-0.5">{stats.completedSaves}</p>
+              </div>
+            </div>
+
+            {/* Controls: Language Switcher & Notification Center & User Status */}
+            <div className="flex items-center gap-3 relative shrink-0">
+              <LanguageSwitcher />
+
+              {currentUser && (
+                <>
+                  {/* Notification Center Trigger Bell button */}
+                  <div className="relative">
+                    <button
+                      id="header-notification-bell"
+                      onClick={() => setShowNotificationCenter(!showNotificationCenter)}
+                      className="p-2.5 bg-surface-dark border border-border-dark rounded-xl hover:bg-surface-dark text-text-subtle hover:text-text-bright transition cursor-pointer relative"
+                    >
+                      <Bell className="w-5 h-5 animate-pulse" />
+                      {notifications.filter((n) => !n.read).length > 0 && (
+                        <span className="absolute -top-1 -right-1 bg-brand-red text-white text-[10px] w-5 h-5 rounded-full flex items-center justify-center font-black border-2 border-card-dark">
+                          {notifications.filter((n) => !n.read).length}
                         </span>
-                      </div>
-
-                      <div className="flex items-center justify-between gap-2 pt-1.5 border-t border-border-dark/60 text-[10px] font-mono">
-                        <div className="flex items-center gap-1">
-                          {browserPermission === "granted" ? (
-                            <span className="text-emerald-400 flex items-center gap-1">
-                              <Check className="w-3 h-3" />
-                              <span>Push Active</span>
-                            </span>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={handleRequestBrowserPermission}
-                              className="text-rose-400 hover:text-white underline flex items-center gap-1 cursor-pointer"
-                            >
-                              <Bell className="w-3 h-3" />
-                              <span>Enable Desktop Push</span>
-                            </button>
-                          )}
-                        </div>
-
-                        <div className="flex items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={handleToggleSound}
-                            className="text-text-subtle hover:text-text-bright flex items-center gap-1 cursor-pointer"
-                            title="Toggle SOS Chime"
-                          >
-                            {soundEnabled ? (
-                              <Volume2 className="w-3 h-3 text-emerald-400" />
-                            ) : (
-                              <VolumeX className="w-3 h-3 text-zinc-500" />
-                            )}
-                            <span>{soundEnabled ? "Sound On" : "Muted"}</span>
-                          </button>
-
-                          <button
-                            id="header-test-sos-btn"
-                            type="button"
-                            onClick={handleTriggerTestSOS}
-                            className="bg-brand-red/25 hover:bg-brand-red text-white px-2 py-0.5 rounded text-[9px] font-bold tracking-wider transition cursor-pointer"
-                            title="Test SOS Toast Alert"
-                          >
-                            {t("test_alert", "Test Alert")}
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="max-h-64 overflow-y-auto space-y-2.5 pr-1">
-                      {notifications.length === 0 ? (
-                        <div className="py-6 text-center text-text-muted font-medium font-sans">
-                          {t("no_notifications", "No active match signals received yet.")}
-                        </div>
-                      ) : (
-                        notifications.map((n) => (
-                          <div
-                            key={n.id}
-                            className={`p-3 rounded-xl border border-border-dark flex flex-col gap-1.5 transition ${
-                              n.read ? "bg-[#18181A] opacity-70" : "bg-brand-red/5 border-brand-red/35"
-                            }`}
-                          >
-                            <div className="flex items-start justify-between gap-2">
-                              <span className="font-extrabold tracking-wide uppercase text-[9px] font-mono px-1.5 py-0.5 rounded bg-surface-dark text-text-muted max-w-[140px] truncate">
-                                {n.type === "SMS" ? "📲 SIMULATED SMS" : n.type === "Email" ? "✉️ SMTP EMAIL" : "📌 LIVE IN-APP"}
-                              </span>
-                              <span className="text-[9px] text-text-muted font-mono">{new Date(n.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                            </div>
-                            <div className="font-bold text-[11px] text-text-bright">{n.title}</div>
-                            <p className="text-[#AAA] text-[11px] leading-relaxed break-words">{n.message}</p>
-                            {n.recipient && (
-                              <div className="font-mono text-[9px] text-brand-red flex items-center gap-1.5 border-t border-[#1C1C1F] pt-1.5">
-                                <span className="bg-surface-dark text-text-muted px-1 py-0.2 rounded uppercase">to:</span>
-                                <span className="truncate">{n.recipient}</span>
-                              </div>
-                            )}
-                          </div>
-                        ))
                       )}
+                    </button>
+                  </div>
+
+                  <div className="flex items-center gap-3 bg-surface-dark px-3 py-1.5 rounded-xl border border-border-dark shrink-0">
+                    <div className="text-right">
+                      <span className="text-[11px] font-bold text-text-bright block">{currentUser.fullName}</span>
+                      <span className="text-[10px] text-text-muted block max-w-[120px] truncate">{currentUser.email}</span>
+                    </div>
+                    <div className="w-8 h-8 rounded-full bg-brand-red/20 border border-brand-red/40 flex items-center justify-center font-bold text-brand-red text-xs">
+                      {currentUser.fullName ? currentUser.fullName[0].toUpperCase() : "U"}
                     </div>
                   </div>
-                )}
+                  <button
+                    onClick={() => setShowLogoutConfirm(true)}
+                    className="p-2.5 bg-surface-dark border border-border-dark rounded-xl hover:bg-brand-red/10 hover:border-brand-red/30 hover:text-brand-red text-text-muted transition cursor-pointer flex items-center justify-center"
+                    title={t("logout", "Log Out")}
+                  >
+                    <LogOut className="w-4 h-4" />
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* Unified Notification Dropdown UI */}
+          {showNotificationCenter && (
+            <div className="absolute right-3 sm:right-4 md:right-8 top-full mt-2 w-[calc(100vw-24px)] sm:w-96 max-w-sm bg-[#121214] border border-border-dark shadow-2xl rounded-2xl p-4 z-50 space-y-3.5 text-xs text-text-bright">
+              <header className="flex items-center justify-between border-b border-border-dark pb-2">
+                <div className="flex items-center gap-1.5 font-bold text-text-bright font-display text-[13px]">
+                  <Bell className="w-4 h-4 text-brand-red" />
+                  <span>{t("live_signals", "Live Dispatch Signals")}</span>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => store.markNotificationsAsRead()}
+                    className="text-[10px] text-text-muted hover:text-brand-red font-semibold transition"
+                  >
+                    {t("mark_all_read", "Mark all read")}
+                  </button>
+                  <span className="text-zinc-800">•</span>
+                  <button
+                    onClick={() => store.clearNotifications()}
+                    className="text-[10px] text-text-muted hover:text-brand-red font-semibold transition"
+                  >
+                    {t("clear", "Clear")}
+                  </button>
+                </div>
+              </header>
+
+              {/* Live SOS Alerts & Browser Push Status Section */}
+              <div className="bg-[#181416] border border-brand-red/30 rounded-xl p-2.5 space-y-2">
+                <div className="flex items-center justify-between text-[11px]">
+                  <div className="flex items-center gap-1.5 text-text-muted">
+                    <MapPin className="w-3 h-3 text-brand-red shrink-0" />
+                    <span>{t("alerts_city", "Alerts City:")}</span>
+                    <strong className="text-text-bright underline decoration-brand-red">{effectiveUserCity}</strong>
+                  </div>
+                  <span className="text-[9px] bg-brand-red/20 text-rose-300 font-mono font-bold px-1.5 py-0.2 rounded">
+                    HIGH URGENCY
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between gap-2 pt-1.5 border-t border-border-dark/60 text-[10px] font-mono">
+                  <div className="flex items-center gap-1">
+                    {browserPermission === "granted" ? (
+                      <span className="text-emerald-400 flex items-center gap-1">
+                        <Check className="w-3 h-3" />
+                        <span>Push Active</span>
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={handleRequestBrowserPermission}
+                        className="text-rose-400 hover:text-white underline flex items-center gap-1 cursor-pointer"
+                      >
+                        <Bell className="w-3 h-3" />
+                        <span>Enable Desktop Push</span>
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleToggleSound}
+                      className="text-text-subtle hover:text-text-bright flex items-center gap-1 cursor-pointer"
+                      title="Toggle SOS Chime"
+                    >
+                      {soundEnabled ? (
+                        <Volume2 className="w-3 h-3 text-emerald-400" />
+                      ) : (
+                        <VolumeX className="w-3 h-3 text-zinc-500" />
+                      )}
+                      <span>{soundEnabled ? "Sound On" : "Muted"}</span>
+                    </button>
+
+                    <button
+                      id="header-test-sos-btn"
+                      type="button"
+                      onClick={handleTriggerTestSOS}
+                      className="bg-brand-red/25 hover:bg-brand-red text-white px-2 py-0.5 rounded text-[9px] font-bold tracking-wider transition cursor-pointer"
+                      title="Test SOS Toast Alert"
+                    >
+                      {t("test_alert", "Test Alert")}
+                    </button>
+                  </div>
+                </div>
               </div>
 
-              <div className="flex items-center gap-3 bg-surface-dark px-3 py-1.5 rounded-xl border border-border-dark shrink-0">
-                <div className="text-right">
-                  <span className="text-[11px] font-bold text-text-bright block">{currentUser.fullName}</span>
-                  <span className="text-[10px] text-text-muted block max-w-[120px] truncate">{currentUser.email}</span>
-                </div>
-                <div className="w-8 h-8 rounded-full bg-brand-red/20 border border-brand-red/40 flex items-center justify-center font-bold text-brand-red text-xs">
-                  {currentUser.fullName ? currentUser.fullName[0].toUpperCase() : "U"}
-                </div>
+              <div className="max-h-64 overflow-y-auto space-y-2.5 pr-1">
+                {notifications.length === 0 ? (
+                  <div className="py-6 text-center text-text-muted font-medium font-sans">
+                    {t("no_notifications", "No active match signals received yet.")}
+                  </div>
+                ) : (
+                  notifications.map((n) => (
+                    <div
+                      key={n.id}
+                      className={`p-3 rounded-xl border border-border-dark flex flex-col gap-1.5 transition ${
+                        n.read ? "bg-[#18181A] opacity-70" : "bg-brand-red/5 border-brand-red/35"
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <span className="font-extrabold tracking-wide uppercase text-[9px] font-mono px-1.5 py-0.5 rounded bg-surface-dark text-text-muted max-w-[140px] truncate">
+                          {n.type === "SMS" ? "📲 SIMULATED SMS" : n.type === "Email" ? "✉️ SMTP EMAIL" : "📌 LIVE IN-APP"}
+                        </span>
+                        <span className="text-[9px] text-text-muted font-mono">{new Date(n.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                      </div>
+                      <div className="font-bold text-[11px] text-text-bright">{n.title}</div>
+                      <p className="text-[#AAA] text-[11px] leading-relaxed break-words">{n.message}</p>
+                      {n.recipient && (
+                        <div className="font-mono text-[9px] text-brand-red flex items-center gap-1.5 border-t border-[#1C1C1F] pt-1.5">
+                          <span className="bg-surface-dark text-text-muted px-1 py-0.2 rounded uppercase">to:</span>
+                          <span className="truncate">{n.recipient}</span>
+                        </div>
+                      )}
+                    </div>
+                  ))
+                )}
               </div>
-              <button
-                onClick={() => setShowLogoutConfirm(true)}
-                className="p-2.5 bg-surface-dark border border-border-dark rounded-xl hover:bg-brand-red/10 hover:border-brand-red/30 hover:text-brand-red text-text-muted transition cursor-pointer flex items-center justify-center"
-                title={t("logout", "Log Out")}
-              >
-                <LogOut className="w-4 h-4" />
-              </button>
-            </>
+            </div>
           )}
-        </div>
         </div>
       </header>
 
@@ -1638,24 +1726,24 @@ export default function App() {
       </nav>
 
       {/* Main Content Layout Body */}
-      <main className="flex-grow max-w-7xl w-full mx-auto p-4 md:p-8">
+      <main className="flex-grow max-w-7xl w-full mx-auto p-3 sm:p-4 md:p-8 pb-28 sm:pb-8">
         
         {isEmergencyModalOpen ? (
           /* FULL PAGE SETUP FOR POST SOS ALERT (MAP SHOWN REMOVED) */
-          <div className="bg-[#110D0D] border-2 border-brand-red rounded-3xl p-6 sm:p-10 shadow-2xl space-y-8 animate-fade-in max-w-4xl mx-auto">
+          <div className="bg-[#110D0D] border-2 border-brand-red rounded-2xl sm:rounded-3xl p-4 sm:p-6 md:p-10 shadow-2xl space-y-6 sm:space-y-8 animate-fade-in max-w-4xl mx-auto">
             {/* Google Maps Integration banner */}
-            <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 px-4 py-3 rounded-2xl flex items-center justify-between gap-3 text-xs font-mono">
+            <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 px-3.5 sm:px-4 py-2.5 sm:py-3 rounded-2xl flex items-center justify-between gap-3 text-[11px] sm:text-xs font-mono">
               <div className="flex items-center gap-2">
                 <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse shrink-0"></span>
-                <span>📍 GOOGLE MAPS INTEGRATED — PRECISE HOSPITAL LOCATION PIN HELPS BLOOD DONORS NAVIGATE DIRECTLY</span>
+                <span className="leading-tight">📍 GOOGLE MAPS INTEGRATED — PRECISE HOSPITAL GPS FOR RAPID ROUTING</span>
               </div>
               <span className="bg-emerald-500/20 px-2 py-0.5 rounded font-extrabold uppercase text-[9px] text-emerald-300 hidden sm:inline">GPS Maps Live</span>
             </div>
 
-            <header className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-border-dark pb-6">
+            <header className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-border-dark pb-5 sm:pb-6">
               <div>
-                <h2 className="text-2xl font-extrabold font-display text-text-bright flex items-center gap-2 tracking-tight">
-                  <Flame className="w-7 h-7 text-brand-red animate-bounce" />
+                <h2 className="text-lg sm:text-2xl font-extrabold font-display text-text-bright flex items-center gap-2 tracking-tight">
+                  <Flame className="w-6 h-6 sm:w-7 sm:h-7 text-brand-red animate-bounce shrink-0" />
                   <span>PUBLISH COMMUNITY SOS EMERGENCY ALERT</span>
                 </h2>
                 <p className="text-xs text-text-muted mt-1.5 leading-relaxed">
@@ -1928,8 +2016,31 @@ export default function App() {
           <div className="space-y-6">
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
               
+              {/* Mobile Filter Collapsible Trigger Header */}
+              <div className="lg:hidden col-span-1 bg-card-dark border border-border-dark p-3.5 rounded-2xl flex items-center justify-between shadow-md">
+                <button
+                  type="button"
+                  onClick={() => setIsMobileFiltersOpen(!isMobileFiltersOpen)}
+                  className="flex items-center gap-2 text-xs font-bold text-text-bright cursor-pointer"
+                >
+                  <Sliders className="w-4 h-4 text-brand-red" />
+                  <span>Search Filters & Radius</span>
+                  <span className="bg-surface-dark text-text-muted px-2 py-0.5 rounded-full text-[10px] font-mono border border-border-dark">
+                    {appliedSearch.blood !== "All" ? appliedSearch.blood : "All"} • {appliedSearch.radius}km
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsMobileFiltersOpen(!isMobileFiltersOpen)}
+                  className="p-1.5 text-text-muted hover:text-white rounded-lg bg-surface-dark border border-border-dark cursor-pointer"
+                  aria-label="Toggle filters"
+                >
+                  {isMobileFiltersOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                </button>
+              </div>
+
               {/* Directory Left Filters Column */}
-              <div className="lg:col-span-4 bg-card-dark border border-border-dark p-5 rounded-2xl space-y-5 shadow-xl flex flex-col justify-between">
+              <div className={`lg:col-span-4 bg-card-dark border border-border-dark p-4 sm:p-5 rounded-2xl space-y-5 shadow-xl flex-col justify-between ${isMobileFiltersOpen ? "flex" : "hidden lg:flex"}`}>
                 <div>
                   <h3 className="text-base font-bold font-display text-text-bright flex items-center gap-2 mb-3">
                     <Sliders className="w-4 h-4 text-brand-red" />
@@ -2155,7 +2266,7 @@ export default function App() {
                     </div>
 
                     {/* View mode switcher */}
-                    <div className="flex items-center gap-1 bg-surface-dark p-1 rounded-xl border border-border-dark self-start sm:self-auto shrink-0">
+                    <div className="flex items-center gap-1 bg-surface-dark p-1 rounded-xl border border-border-dark w-full sm:w-auto justify-between sm:justify-start shrink-0">
                       <button
                         id="view-toggle-side-by-side"
                         type="button"
@@ -2163,7 +2274,7 @@ export default function App() {
                           setSearchViewMode("side-by-side");
                           setMapToggle(false);
                         }}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-bold select-none cursor-pointer transition flex items-center gap-1.5 ${
+                        className={`flex-1 sm:flex-initial px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-bold select-none cursor-pointer transition flex items-center justify-center gap-1.5 ${
                           searchViewMode === "side-by-side"
                             ? "bg-brand-red text-white shadow"
                             : "text-text-muted hover:text-text-bright"
@@ -2171,7 +2282,8 @@ export default function App() {
                         title="Side-by-side: Donors list alongside interactive map"
                       >
                         <Columns2 className="w-3.5 h-3.5" />
-                        <span>Side-by-Side Map</span>
+                        <span className="hidden xs:inline">Side-by-Side</span>
+                        <span className="xs:hidden">Split</span>
                       </button>
 
                       <button
@@ -2181,7 +2293,7 @@ export default function App() {
                           setSearchViewMode("list");
                           setMapToggle(false);
                         }}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-bold select-none cursor-pointer transition flex items-center gap-1.5 ${
+                        className={`flex-1 sm:flex-initial px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-bold select-none cursor-pointer transition flex items-center justify-center gap-1.5 ${
                           searchViewMode === "list"
                             ? "bg-brand-red text-white shadow"
                             : "text-text-muted hover:text-text-bright"
@@ -2199,7 +2311,7 @@ export default function App() {
                           setSearchViewMode("map");
                           setMapToggle(true);
                         }}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-bold select-none cursor-pointer transition flex items-center gap-1.5 ${
+                        className={`flex-1 sm:flex-initial px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-bold select-none cursor-pointer transition flex items-center justify-center gap-1.5 ${
                           searchViewMode === "map"
                             ? "bg-brand-red text-white shadow"
                             : "text-text-muted hover:text-text-bright"
@@ -2207,7 +2319,8 @@ export default function App() {
                         title="Full interactive map view"
                       >
                         <Map className="w-3.5 h-3.5" />
-                        <span>Full Map</span>
+                        <span className="hidden xs:inline">Full Map</span>
+                        <span className="xs:hidden">Map</span>
                       </button>
                     </div>
                   </div>
@@ -2287,7 +2400,7 @@ export default function App() {
                     </div>
 
                     {/* Right Column: Interactive Side Map */}
-                    <div className="lg:col-span-6 h-[460px] lg:h-[660px] w-full sticky top-20 rounded-2xl overflow-hidden border border-border-dark shadow-xl">
+                    <div className="lg:col-span-6 h-[320px] sm:h-[460px] lg:h-[660px] w-full sticky top-20 rounded-2xl overflow-hidden border border-border-dark shadow-xl">
                       <div className="absolute top-2 left-2 z-10 bg-base-dark/90 backdrop-blur-md px-2.5 py-1 rounded-lg border border-border-dark text-[10px] font-mono text-text-muted flex items-center gap-1.5 shadow-md">
                         <Compass className="w-3.5 h-3.5 text-brand-red animate-spin" />
                         <span>Side-by-Side Map Live ({displayedDonors.length} Donors)</span>
@@ -2353,17 +2466,6 @@ export default function App() {
 
               <div className="flex items-center gap-2.5">
                 <button
-                  id="test-sos-toast-btn"
-                  type="button"
-                  onClick={handleTriggerTestSOS}
-                  className="bg-[#241A1C] hover:bg-[#302225] border border-brand-red/50 text-rose-300 text-xs font-semibold py-2.5 px-3.5 rounded-xl cursor-pointer shadow flex items-center gap-1.5 transition"
-                  title={`Simulate a new high-urgency SOS alert in ${effectiveUserCity}`}
-                >
-                  <Bell className="w-3.5 h-3.5 text-brand-red animate-pulse" />
-                  <span>Test SOS Toast</span>
-                </button>
-
-                <button
                   id="create-sos-panel-btn"
                   onClick={() => setIsEmergencyModalOpen(true)}
                   className="bg-brand-red hover:bg-brand-red-dark text-white text-xs font-bold py-2.5 px-4 rounded-xl cursor-pointer shadow flex items-center gap-1.5 transition"
@@ -2386,7 +2488,7 @@ export default function App() {
                 </span>
               </div>
 
-              <div className="flex items-center gap-3 font-mono text-[11px] self-end md:self-auto">
+              <div className="flex items-center gap-3 font-mono text-[11px] self-start md:self-auto flex-wrap">
                 {browserPermission !== "granted" ? (
                   <button
                     type="button"
@@ -2617,7 +2719,7 @@ export default function App() {
                       </div>
 
                       {/* Contact Trigger CTAs */}
-                      <div className="flex items-center gap-2 pl-2">
+                      <div className="flex flex-wrap items-center gap-2 pl-2">
                         {req.status === "Active" ? (
                           <>
                             {/* GATED DONOR ACCEPTANCE: Only show acceptance action to verified suitable donors */}
@@ -4513,7 +4615,7 @@ export default function App() {
       />
 
       {/* Human Footers info details */}
-      <footer className="border-t border-border-dark bg-base-dark py-4 text-center text-[10px] text-text-subtle">
+      <footer className="border-t border-border-dark bg-base-dark py-4 mb-16 sm:mb-0 text-center text-[10px] text-text-subtle">
         <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-4">
           <p className="flex items-center justify-center gap-1.5">
             <HemolinkIcon className="w-3.5 h-3.5 text-brand-red inline shrink-0" />
@@ -4522,6 +4624,257 @@ export default function App() {
           <p className="font-mono">Server node status: ONLINE (Port 3000) • ISO UTC Coordinates: 2026-06-04 14:11Z</p>
         </div>
       </footer>
+
+      {/* Ergonomic Mobile Bottom Navigation Bar (Fixed for Mobile Screens) */}
+      <nav
+        id="mobile-bottom-nav"
+        className="sm:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#0F0F12]/95 backdrop-blur-xl border-t border-border-dark px-1 py-1.5 shadow-2xl flex items-center justify-around"
+      >
+        <button
+          type="button"
+          id="mobile-bottom-btn-search"
+          onClick={() => {
+            setActiveTab("search");
+            setShowMobileMoreMenu(false);
+          }}
+          className={`flex flex-col items-center justify-center flex-1 py-1 px-1 rounded-xl transition cursor-pointer ${
+            activeTab === "search" && !showMobileMoreMenu ? "text-brand-red font-bold" : "text-text-muted hover:text-text-bright"
+          }`}
+        >
+          <Search className="w-4 h-4" />
+          <span className="text-[9px] tracking-tight mt-1 font-medium">Search</span>
+        </button>
+
+        <button
+          type="button"
+          id="mobile-bottom-btn-emergency"
+          onClick={() => {
+            setActiveTab("emergency");
+            setShowMobileMoreMenu(false);
+          }}
+          className={`flex flex-col items-center justify-center flex-1 py-1 px-1 rounded-xl relative transition cursor-pointer ${
+            activeTab === "emergency" && !showMobileMoreMenu ? "text-brand-red font-bold" : "text-text-muted hover:text-text-bright"
+          }`}
+        >
+          <Flame className="w-4 h-4" />
+          <span className="text-[9px] tracking-tight mt-1 font-medium">SOS Board</span>
+          {emergencies.filter((e) => e.status === "Active").length > 0 && (
+            <span className="absolute top-1 right-2.5 w-2 h-2 rounded-full bg-orange-500 animate-ping"></span>
+          )}
+        </button>
+
+        <button
+          type="button"
+          id="mobile-bottom-btn-maps"
+          onClick={() => {
+            setActiveTab("maps");
+            setShowMobileMoreMenu(false);
+          }}
+          className={`flex flex-col items-center justify-center flex-1 py-1 px-1 rounded-xl transition cursor-pointer ${
+            activeTab === "maps" && !showMobileMoreMenu ? "text-emerald-400 font-bold" : "text-text-muted hover:text-text-bright"
+          }`}
+        >
+          <Compass className="w-4 h-4" />
+          <span className="text-[9px] tracking-tight mt-1 font-medium">Blood Banks</span>
+        </button>
+
+        <button
+          type="button"
+          id="mobile-bottom-btn-eligibility"
+          onClick={() => {
+            setActiveTab("eligibility");
+            setShowMobileMoreMenu(false);
+          }}
+          className={`flex flex-col items-center justify-center flex-1 py-1 px-1 rounded-xl transition cursor-pointer ${
+            activeTab === "eligibility" && !showMobileMoreMenu ? "text-brand-red font-bold" : "text-text-muted hover:text-text-bright"
+          }`}
+        >
+          <ShieldCheck className="w-4 h-4 text-emerald-400" />
+          <span className="text-[9px] tracking-tight mt-1 font-medium">Eligible?</span>
+        </button>
+
+        <button
+          type="button"
+          id="mobile-bottom-btn-more"
+          onClick={() => setShowMobileMoreMenu(true)}
+          className={`flex flex-col items-center justify-center flex-1 py-1 px-1 rounded-xl transition cursor-pointer ${
+            ["calendar", "contacts", "profile", "chats", "admin"].includes(activeTab) || showMobileMoreMenu
+              ? "text-brand-red font-bold"
+              : "text-text-muted hover:text-text-bright"
+          }`}
+        >
+          <MoreHorizontal className="w-4 h-4" />
+          <span className="text-[9px] tracking-tight mt-1 font-medium">
+            {["calendar", "contacts", "profile", "chats", "admin"].includes(activeTab) ? "More • Active" : "More"}
+          </span>
+        </button>
+      </nav>
+
+      {/* Mobile More Navigation Drawer / Modal */}
+      {showMobileMoreMenu && (
+        <div className="fixed inset-0 z-50 sm:hidden flex flex-col justify-end bg-black/60 backdrop-blur-sm animate-fade-in">
+          <div
+            className="bg-card-dark border-t border-border-dark rounded-t-3xl p-5 space-y-4 shadow-2xl max-h-[85vh] overflow-y-auto"
+          >
+            <div className="flex items-center justify-between pb-3 border-b border-border-dark">
+              <div className="flex items-center gap-2">
+                <HemolinkIcon className="w-5 h-5 text-brand-red" />
+                <span className="text-sm font-bold text-text-bright font-display">More Destinations</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowMobileMoreMenu(false)}
+                className="p-1.5 rounded-lg bg-surface-dark text-text-muted hover:text-text-bright border border-border-dark"
+                aria-label="Close menu"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Quick Action: Post SOS Alert */}
+            <button
+              type="button"
+              onClick={() => {
+                setShowMobileMoreMenu(false);
+                setIsEmergencyModalOpen(true);
+              }}
+              className="w-full py-3 px-4 bg-brand-red hover:bg-brand-red-dark text-white font-bold text-xs rounded-xl shadow-lg shadow-brand-red/25 flex items-center justify-center gap-2 tracking-wider uppercase"
+            >
+              <Plus className="w-4 h-4 stroke-[3]" />
+              <span>Post SOS Emergency Request</span>
+            </button>
+
+            {/* Navigation Grid */}
+            <div className="grid grid-cols-2 gap-2.5 pt-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab("calendar");
+                  setShowMobileMoreMenu(false);
+                }}
+                className={`p-3 rounded-xl border text-left flex items-start gap-2.5 transition ${
+                  activeTab === "calendar"
+                    ? "bg-brand-red/10 border-brand-red text-brand-red"
+                    : "bg-surface-dark border-border-dark text-text-bright hover:border-border-dark/80"
+                }`}
+              >
+                <Calendar className="w-4 h-4 text-rose-400 mt-0.5 shrink-0" />
+                <div>
+                  <p className="text-xs font-bold leading-tight">Calendar</p>
+                  <p className="text-[10px] text-text-muted mt-0.5">Google Sync</p>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab("contacts");
+                  setShowMobileMoreMenu(false);
+                }}
+                className={`p-3 rounded-xl border text-left flex items-start gap-2.5 transition ${
+                  activeTab === "contacts"
+                    ? "bg-brand-red/10 border-brand-red text-brand-red"
+                    : "bg-surface-dark border-border-dark text-text-bright hover:border-border-dark/80"
+                }`}
+              >
+                <Users className="w-4 h-4 text-sky-400 mt-0.5 shrink-0" />
+                <div>
+                  <p className="text-xs font-bold leading-tight">Contacts</p>
+                  <p className="text-[10px] text-text-muted mt-0.5">Workspace</p>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab("chats");
+                  setShowMobileMoreMenu(false);
+                }}
+                className={`p-3 rounded-xl border text-left flex items-start gap-2.5 transition relative ${
+                  activeTab === "chats"
+                    ? "bg-brand-red/10 border-brand-red text-brand-red"
+                    : "bg-surface-dark border-border-dark text-text-bright hover:border-border-dark/80"
+                }`}
+              >
+                <MessageSquare className="w-4 h-4 text-blue-400 mt-0.5 shrink-0" />
+                <div>
+                  <p className="text-xs font-bold leading-tight">Direct Chats</p>
+                  <p className="text-[10px] text-text-muted mt-0.5">Secure messaging</p>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab("profile");
+                  setShowMobileMoreMenu(false);
+                }}
+                className={`p-3 rounded-xl border text-left flex items-start gap-2.5 transition ${
+                  activeTab === "profile"
+                    ? "bg-brand-red/10 border-brand-red text-brand-red"
+                    : "bg-surface-dark border-border-dark text-text-bright hover:border-border-dark/80"
+                }`}
+              >
+                <User className="w-4 h-4 text-emerald-400 mt-0.5 shrink-0" />
+                <div>
+                  <p className="text-xs font-bold leading-tight">My Profile</p>
+                  <p className="text-[10px] text-text-muted mt-0.5">Donor status & pass</p>
+                </div>
+              </button>
+
+              {currentUser?.role === "admin" && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveTab("admin");
+                    setShowMobileMoreMenu(false);
+                  }}
+                  className={`col-span-2 p-3 rounded-xl border text-left flex items-start gap-2.5 transition ${
+                    activeTab === "admin"
+                      ? "bg-brand-red/10 border-brand-red text-brand-red"
+                      : "bg-surface-dark border-border-dark text-text-bright hover:border-border-dark/80"
+                  }`}
+                >
+                  <Shield className="w-4 h-4 text-amber-400 mt-0.5 shrink-0" />
+                  <div>
+                    <p className="text-xs font-bold leading-tight">Super Admin Hub & Stations</p>
+                    <p className="text-[10px] text-text-muted mt-0.5">Optical camera verification station & telemetry</p>
+                  </div>
+                </button>
+              )}
+            </div>
+
+            {/* Donor Identity Pass Quick Button if available */}
+            {myProfile && (
+              <div className="pt-2 border-t border-border-dark flex items-center justify-between gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowMobileMoreMenu(false);
+                    setSelectedPassDonor(myProfile);
+                  }}
+                  className="flex-1 py-2 px-3 bg-surface-dark hover:bg-zinc-800 border border-border-dark text-text-bright rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5"
+                >
+                  <QrCode className="w-3.5 h-3.5 text-brand-red" />
+                  <span>My QR Identity Pass</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowMobileMoreMenu(false);
+                    setShowMilestoneModal(true);
+                  }}
+                  className="flex-1 py-2 px-3 bg-surface-dark hover:bg-zinc-800 border border-border-dark text-text-bright rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5"
+                >
+                  <Award className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Badges & Milestones</span>
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

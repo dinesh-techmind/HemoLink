@@ -39,23 +39,23 @@ export default function ForgotPasswordView({ onBackToLogin, onOtpSent, initialEm
     setIsSubmitting(true);
 
     try {
-      const response = await fetch("/api/forgot-password/send-otp", {
+      const response = await fetch("/api/otp/generate-and-send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: cleanEmail }),
+        body: JSON.stringify({ email: cleanEmail, type: "forgot_password" }),
       });
 
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || "Unable to send verification code. Please try again.");
+        throw new Error(data.error || "Unable to send 5-digit verification code. Please try again.");
       }
 
       // Navigate to OTP verification step
       onOtpSent(cleanEmail);
     } catch (err: any) {
       console.warn("Forgot password error:", err);
-      setError(err.message || "Unable to send verification code. Please check your network and try again.");
+      setError(err.message || "Unable to send 5-digit verification code. Please check your network and try again.");
     } finally {
       setIsSubmitting(false);
     }
@@ -72,7 +72,7 @@ export default function ForgotPasswordView({ onBackToLogin, onOtpSent, initialEm
           Forgot Password?
         </h1>
         <p className="text-xs text-gray-600 font-medium max-w-xs mx-auto leading-relaxed">
-          Enter your registered email address and we'll send you a verification code.
+          Enter your registered Gmail address and we'll send you a 5-digit verification code.
         </p>
       </div>
 

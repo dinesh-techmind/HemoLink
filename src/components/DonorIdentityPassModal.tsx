@@ -974,6 +974,15 @@ SUPPORT: support@blooddonationapp.com
                 `
                     : ""
                 }
+                @media print {
+                  body, body *, #donor-pass-printable-area, #donor-pass-printable-area *, .print-cards-wrapper, .print-cards-wrapper *, #donor-pass-front, #donor-pass-front *, #donor-pass-back, #donor-pass-back * {
+                    visibility: visible !important;
+                  }
+                  .no-print, [data-no-print] {
+                    display: none !important;
+                    visibility: hidden !important;
+                  }
+                }
                 .print-cards-wrapper {
                   display: flex !important;
                   flex-direction: ${printOrientation === "landscape" || isCR80 ? "row" : "column"} !important;
@@ -984,6 +993,7 @@ SUPPORT: support@blooddonationapp.com
                   width: 100% !important;
                   max-width: ${isCR80 ? "100%" : printOrientation === "landscape" ? "1080px" : "820px"} !important;
                   margin: 0 auto !important;
+                  visibility: visible !important;
                 }
                 .print-cards-wrapper > div {
                   page-break-inside: avoid !important;
@@ -992,6 +1002,7 @@ SUPPORT: support@blooddonationapp.com
                   flex-direction: column !important;
                   align-items: center !important;
                   margin: 0 auto !important;
+                  visibility: visible !important;
                 }
                 ${
                   isCR80
@@ -1009,17 +1020,17 @@ SUPPORT: support@blooddonationapp.com
                 }
               </style>
             </head>
-            <body>
+            <body id="donor-pass-isolated-body">
               ${
                 hasCutMarks
-                  ? `<div class="wallet-cut-guide-container">
+                  ? `<div class="wallet-cut-guide-container" id="donor-pass-printable-area">
                       <div class="wallet-cut-label">✂ CUT ALONG DASHED BORDER • FOLD IN CENTER FOR STANDARD WALLET DONOR PASS</div>
                       <div class="print-cards-wrapper">
                         ${targetElement.innerHTML}
                       </div>
                       <div class="wallet-fold-axis">-------- FOLD LINE (CARD MEETS ISO 7810 ID-1 STANDARDS) --------</div>
                     </div>`
-                  : `<div class="print-cards-wrapper">
+                  : `<div id="donor-pass-printable-area" class="print-cards-wrapper">
                       ${targetElement.innerHTML}
                     </div>`
               }
@@ -1056,7 +1067,7 @@ SUPPORT: support@blooddonationapp.com
             }
             setIsPrinting(false);
             setTimeout(() => setPrintFeedback(null), 3500);
-          }, 400);
+          }, 500);
           return;
         }
 
@@ -1064,12 +1075,13 @@ SUPPORT: support@blooddonationapp.com
         const iframe = document.createElement("iframe");
         iframe.id = "donor-pass-isolated-print-frame";
         iframe.style.position = "fixed";
-        iframe.style.right = "0";
-        iframe.style.bottom = "0";
-        iframe.style.width = "0";
-        iframe.style.height = "0";
+        iframe.style.left = "-9999px";
+        iframe.style.top = "-9999px";
+        iframe.style.width = "1024px";
+        iframe.style.height = "850px";
         iframe.style.border = "0";
-        iframe.style.visibility = "hidden";
+        iframe.style.opacity = "0.01";
+        iframe.style.pointerEvents = "none";
         document.body.appendChild(iframe);
 
         const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
@@ -1882,7 +1894,7 @@ SUPPORT: support@blooddonationapp.com
             {/* FRONT SIDE CARD: Certified Healthcare Donor Identity Credential          */}
             {/* ========================================================================= */}
             {(viewMode === "both" || viewMode === "front") && (
-              <div className="flex flex-col items-center w-full max-w-[350px] xs:max-w-[360px] sm:w-[365px]">
+              <div className="flex flex-col items-center w-full max-w-[calc(100vw-36px)] sm:max-w-[365px]">
                 <div className="flex items-center justify-between w-full px-2 mb-2 sm:mb-3 no-print">
                   <span className="text-xs font-black uppercase tracking-widest text-text-muted font-mono flex items-center gap-1.5">
                     <CreditCard className="w-3.5 h-3.5 text-brand-red" />
@@ -2184,7 +2196,7 @@ SUPPORT: support@blooddonationapp.com
             {/* BACK SIDE CARD: Clinical Transfusion Ledger & Medical Directives          */}
             {/* ========================================================================= */}
             {(viewMode === "both" || viewMode === "back") && (
-              <div className="flex flex-col items-center w-full max-w-[350px] xs:max-w-[360px] sm:w-[365px]">
+              <div className="flex flex-col items-center w-full max-w-[calc(100vw-36px)] sm:max-w-[365px]">
                 <div className="flex items-center justify-between w-full px-2 mb-2 sm:mb-3 no-print">
                   <span className="text-xs font-black uppercase tracking-widest text-text-muted font-mono flex items-center gap-1.5">
                     <Activity className="w-3.5 h-3.5 text-brand-red" />

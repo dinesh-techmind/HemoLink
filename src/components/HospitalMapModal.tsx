@@ -180,11 +180,11 @@ export default function HospitalMapModal({
     >
       <div
         id="hospital-map-modal-content"
-        className="bg-[#110D0D] border-2 border-brand-red rounded-3xl w-full max-w-3xl overflow-hidden shadow-2xl flex flex-col max-h-[92vh]"
+        className="bg-[#110D0D] border-2 border-brand-red rounded-2xl sm:rounded-3xl w-full max-w-3xl overflow-hidden shadow-2xl flex flex-col max-h-[92vh]"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="bg-gradient-to-r from-red-950/60 to-[#141212] p-5 sm:p-6 border-b border-border-dark flex items-start justify-between gap-4">
+        <div className="bg-gradient-to-r from-red-950/60 to-[#141212] p-4 sm:p-6 border-b border-border-dark flex items-start justify-between gap-3 sm:gap-4">
           <div className="flex items-start gap-3.5">
             <div className="w-12 h-12 rounded-2xl bg-brand-red/20 border border-brand-red/40 flex items-center justify-center text-brand-red shrink-0 shadow-lg">
               <MapPin className="w-6 h-6" />
@@ -247,7 +247,7 @@ export default function HospitalMapModal({
         </div>
 
         {/* Interactive Map View */}
-        <div className="relative h-64 sm:h-80 w-full bg-[#0A0A0A] border-b border-border-dark">
+        <div className="relative h-48 sm:h-80 w-full bg-[#0A0A0A] border-b border-border-dark">
           <div ref={mapContainerRef} className="w-full h-full" />
 
           {/* Quick HUD overlay */}
@@ -275,7 +275,7 @@ export default function HospitalMapModal({
         </div>
 
         {/* Action Controls & Navigation CTA */}
-        <div className="p-5 sm:p-6 space-y-4 overflow-y-auto bg-[#110D0D]">
+        <div className="p-4 sm:p-6 space-y-3 sm:space-y-4 overflow-y-auto bg-[#110D0D]">
           {/* Clinical Notes Banner */}
           {emergency.additionalNotes && (
             <div className="bg-surface-dark/90 border border-border-dark p-3 rounded-xl text-xs space-y-1">

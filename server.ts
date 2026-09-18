@@ -66,11 +66,74 @@ app.get("/api/users", requireAuth, async (req: AuthRequest, res: express.Respons
   }
 });
 
-// ==========================================
-// 6-Digit OTP-based Password Recovery Routes
-// ==========================================
+// =========================================================================
+// Automatic 5-Digit OTP Generator & Verification Routes (Registration & Recovery)
+// =========================================================================
 
-// 1. Send OTP (Cryptographically secure, hashed storage, anti-enumeration, rate-limited)
+// Generic 5-Digit OTP Generator & Dispatch (Supports type: "register" | "forgot_password")
+app.post("/api/otp/generate-and-send", async (req: express.Request, res: express.Response) => {
+  try {
+    const { email, type = "register", fullName } = req.body || {};
+    if (!email || typeof email !== "string") {
+      return res.status(400).json({ error: "Please enter your Gmail or email address." });
+    }
+
+    const cleanEmail = email.trim().toLowerCase();
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(cleanEmail)) {
+      return res.status(400).json({ error: "Please enter a valid email address." });
+    }
+
+    const purpose = type === "forgot_password" ? "forgot_password" : "register";
+    const result = await generateAndStoreOtp(cleanEmail, purpose, fullName);
+    if (!result.success) {
+      return res.status(429).json({ error: result.message, cooldown: result.cooldown });
+    }
+
+    res.json({
+      success: true,
+      message: result.message,
+      cooldown: result.cooldown,
+      previewOtp: result.previewOtp,
+      deliveryMethod: result.deliveryMethod,
+      generatedBy: result.generatedBy,
+    });
+  } catch (err: any) {
+    console.error("Error generating 5-digit OTP:", err);
+    res.status(500).json({ error: "Unable to send verification code. Please try again later." });
+  }
+});
+
+// Generic 5-Digit OTP Verification (Supports type: "register" | "forgot_password")
+app.post("/api/otp/verify", async (req: express.Request, res: express.Response) => {
+  try {
+    const { email, otp, type = "register" } = req.body || {};
+    if (!email || typeof email !== "string") {
+      return res.status(400).json({ error: "Email address is required." });
+    }
+    const cleanOtp = typeof otp === "string" ? otp.trim() : "";
+    if (!cleanOtp || !/^\d{5}$/.test(cleanOtp)) {
+      return res.status(400).json({ error: "Please enter the valid 5-digit verification code." });
+    }
+
+    const purpose = type === "forgot_password" ? "forgot_password" : "register";
+    const result = await verifyOtp(email, cleanOtp, purpose);
+    if (!result.success) {
+      return res.status(400).json({ error: result.message });
+    }
+
+    res.json({
+      success: true,
+      message: result.message,
+      resetToken: result.resetToken,
+    });
+  } catch (err: any) {
+    console.error("Error verifying 5-digit OTP:", err);
+    res.status(500).json({ error: "Something went wrong during verification. Please try again." });
+  }
+});
+
+// 1. Send OTP (Forgot Password backward-compatible endpoint)
 app.post("/api/forgot-password/send-otp", async (req: express.Request, res: express.Response) => {
   try {
     const { email } = req.body || {};
@@ -84,7 +147,7 @@ app.post("/api/forgot-password/send-otp", async (req: express.Request, res: expr
       return res.status(400).json({ error: "Please enter a valid email address." });
     }
 
-    const result = await generateAndStoreOtp(cleanEmail);
+    const result = await generateAndStoreOtp(cleanEmail, "forgot_password");
     if (!result.success) {
       return res.status(429).json({ error: result.message, cooldown: result.cooldown });
     }
@@ -92,6 +155,9 @@ app.post("/api/forgot-password/send-otp", async (req: express.Request, res: expr
     res.json({
       success: true,
       message: result.message,
+      cooldown: result.cooldown,
+      previewOtp: result.previewOtp,
+      generatedBy: result.generatedBy,
     });
   } catch (err: any) {
     console.error("Error generating OTP:", err);
@@ -99,18 +165,19 @@ app.post("/api/forgot-password/send-otp", async (req: express.Request, res: expr
   }
 });
 
-// 2. Verify OTP (Checks expiration, used state, max 5 attempts, hashes submitted OTP)
+// 2. Verify OTP (Forgot Password backward-compatible endpoint - supports 5 digits)
 app.post("/api/forgot-password/verify-otp", async (req: express.Request, res: express.Response) => {
   try {
     const { email, otp } = req.body || {};
     if (!email || typeof email !== "string") {
       return res.status(400).json({ error: "Email address is required." });
     }
-    if (!otp || typeof otp !== "string" || !/^\d{6}$/.test(otp.trim())) {
-      return res.status(400).json({ error: "Please enter a valid 6-digit verification code." });
+    const cleanOtp = typeof otp === "string" ? otp.trim() : "";
+    if (!cleanOtp || !/^\d{5}$/.test(cleanOtp)) {
+      return res.status(400).json({ error: "Please enter a valid 5-digit verification code." });
     }
 
-    const result = await verifyOtp(email, otp);
+    const result = await verifyOtp(email, cleanOtp, "forgot_password");
     if (!result.success) {
       return res.status(400).json({ error: result.message });
     }

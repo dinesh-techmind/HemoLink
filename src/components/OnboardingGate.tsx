@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Droplet, Mail, ShieldCheck, User, Lock, Eye, EyeOff, ArrowRight, Calendar, Phone } from 'lucide-react';
+import { Droplet, Mail, ShieldCheck, User, Lock, Eye, EyeOff, ArrowRight, Calendar, Phone, RefreshCw, Sparkles } from 'lucide-react';
 import { auth } from '../lib/firebase';
 import { GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
 import { store } from '../lib/store';
@@ -49,12 +49,35 @@ export default function OnboardingGate({ onComplete }: { onComplete: () => void 
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [showTermsModal, setShowTermsModal] = useState(false);
   const [showPrivacyModal, setShowPrivacyModal] = useState(false);
-  const [otp, setOtp] = useState(["", "", "", "", "", ""]);
+  // 5-digit OTP state
+  const [otp, setOtp] = useState(["", "", "", "", ""]);
+  const [otpSecondsLeft, setOtpSecondsLeft] = useState(300);
+  const [otpCooldown, setOtpCooldown] = useState(30);
+  const [isSendingOtp, setIsSendingOtp] = useState(false);
+  const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
+  const [otpPreviewNotice, setOtpPreviewNotice] = useState<string | null>(null);
 
   // Eye toggle visibility states
   const [showLoginPassword, setShowLoginPassword] = useState(false);
   const [showRegisterPassword, setShowRegisterPassword] = useState(false);
   const [showRegisterConfirmPassword, setShowRegisterConfirmPassword] = useState(false);
+
+  // OTP 5-minute countdown and resend timer
+  useEffect(() => {
+    if (view !== "otp" || otpSecondsLeft <= 0) return;
+    const timer = setInterval(() => {
+      setOtpSecondsLeft((prev) => (prev > 0 ? prev - 1 : 0));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [view, otpSecondsLeft]);
+
+  useEffect(() => {
+    if (view !== "otp" || otpCooldown <= 0) return;
+    const timer = setInterval(() => {
+      setOtpCooldown((prev) => (prev > 0 ? prev - 1 : 0));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [view, otpCooldown]);
 
   // Detect Firebase password reset links or direct paths (?mode=resetPassword&oobCode=...)
   useEffect(() => {
@@ -169,9 +192,20 @@ export default function OnboardingGate({ onComplete }: { onComplete: () => void 
       finishWithLoading();
   };
 
-  const handleRegister = (e: React.FormEvent) => {
+  const handleRegister = async (e: React.FormEvent) => {
       e.preventDefault();
+      const cleanEmail = email.trim().toLowerCase();
       const cleanPhone = phone.trim();
+      const cleanName = fullName.trim();
+
+      if (!cleanEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+          setAuthError("Please enter a valid Gmail or email address.");
+          return;
+      }
+      if (!cleanName) {
+          setAuthError("Please enter your full name.");
+          return;
+      }
       if (!cleanPhone) {
           setAuthError("Please enter your phone number.");
           return;
@@ -192,16 +226,110 @@ export default function OnboardingGate({ onComplete }: { onComplete: () => void 
           setAuthError("Please accept Terms & Conditions.");
           return;
       }
+
       setAuthError("");
-      setView("otp");
+      setIsSendingOtp(true);
+
+      try {
+        const response = await fetch("/api/otp/generate-and-send", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            email: cleanEmail,
+            type: "register",
+            fullName: cleanName,
+          }),
+        });
+
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.error || "Unable to send 5-digit verification code. Please try again.");
+        }
+
+        setOtp(["", "", "", "", ""]);
+        setOtpSecondsLeft(300);
+        setOtpCooldown(data.cooldown || 30);
+        if (data.previewOtp) {
+          setOtpPreviewNotice(`Test Mode: 5-Digit OTP is ${data.previewOtp}`);
+        } else {
+          setOtpPreviewNotice(null);
+        }
+        setView("otp");
+      } catch (err: any) {
+        setAuthError(err.message || "Failed to generate and send OTP to your Gmail. Please try again.");
+      } finally {
+        setIsSendingOtp(false);
+      }
   };
 
-  const handleVerifyOTP = () => {
-      if (otp.join("").length === 6) {
-          store.registerUser(email, fullName, "user");
-          finishWithLoading();
-      } else {
-          setAuthError("Please enter a valid 6-digit OTP.");
+  const handleVerifyOTP = async () => {
+      const fullOtp = otp.join("");
+      if (fullOtp.length !== 5) {
+          setAuthError("Please enter the complete 5-digit OTP.");
+          return;
+      }
+
+      setAuthError("");
+      setIsVerifyingOtp(true);
+
+      try {
+        const response = await fetch("/api/otp/verify", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            email: email.trim().toLowerCase(),
+            otp: fullOtp,
+            type: "register",
+          }),
+        });
+
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.error || "Invalid or expired 5-digit verification code.");
+        }
+
+        store.registerUser(email.trim().toLowerCase(), fullName.trim(), "user");
+        finishWithLoading();
+      } catch (err: any) {
+        setAuthError(err.message || "Verification failed. Please check your 5-digit OTP and try again.");
+      } finally {
+        setIsVerifyingOtp(false);
+      }
+  };
+
+  const handleResendOTP = async () => {
+      if (otpCooldown > 0 || isSendingOtp) return;
+      setIsSendingOtp(true);
+      setAuthError("");
+
+      try {
+        const response = await fetch("/api/otp/generate-and-send", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            email: email.trim().toLowerCase(),
+            type: "register",
+            fullName: fullName.trim(),
+          }),
+        });
+
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.error || "Unable to resend OTP.");
+        }
+
+        setOtp(["", "", "", "", ""]);
+        setOtpSecondsLeft(300);
+        setOtpCooldown(data.cooldown || 30);
+        if (data.previewOtp) {
+          setOtpPreviewNotice(`Test Mode: 5-Digit OTP is ${data.previewOtp}`);
+        }
+        const firstInput = document.getElementById("otp-0");
+        firstInput?.focus();
+      } catch (err: any) {
+        setAuthError(err.message || "Unable to resend OTP. Please try again later.");
+      } finally {
+        setIsSendingOtp(false);
       }
   };
 
@@ -222,46 +350,142 @@ export default function OnboardingGate({ onComplete }: { onComplete: () => void 
   }
 
   if (view === 'otp') {
+    const fullOtp = otp.join("");
+    const mins = Math.floor(otpSecondsLeft / 60);
+    const secs = otpSecondsLeft % 60;
+    const formattedTimer = `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+
     return (
       <div className="min-h-screen bg-gradient-to-br from-[#ffecec] to-white relative flex items-center justify-center p-4">
-        <div className="bg-white rounded-3xl p-8 sm:p-10 max-w-md w-full shadow-2xl space-y-6">
-          <div className="text-center space-y-3">
+        <div className="bg-white rounded-3xl p-6 sm:p-10 max-w-md w-full shadow-2xl space-y-6">
+          <div className="text-center space-y-2">
              <div className="flex justify-center mb-1">
                 <div className="w-14 h-14 bg-red-50 rounded-2xl flex items-center justify-center p-2.5 border border-red-100 shadow-sm">
                   <HemolinkIcon className="w-full h-full text-[#9B1B28]" />
                 </div>
              </div>
-             <h2 className="text-2xl font-extrabold text-[#9B1B28] tracking-wider font-display uppercase">HEMOLINK</h2>
+             <h2 className="text-xl font-black text-[#9B1B28] tracking-wider font-display uppercase">HEMOLINK</h2>
              <h1 className="text-2xl font-extrabold text-gray-900">Verify Your Account</h1>
-             <p className="text-xs text-gray-500">We've sent a verification code to<br/><span className="font-bold text-gray-800">{email || "b******@gmail.com"}</span></p>
+             <p className="text-xs text-gray-600">
+               We've sent a 5-digit verification code to your Gmail address:<br/>
+               <span className="font-bold text-[#ba1111] bg-red-50 py-0.5 px-2.5 rounded-full inline-block mt-1">
+                 {email.trim().toLowerCase() || "user@gmail.com"}
+               </span>
+             </p>
+             <div className="flex justify-center mt-2">
+               <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-800 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200">
+                 <Sparkles className="w-3 h-3 text-emerald-600" />
+                 <span>Generated & Protected via Google Gemini AI</span>
+               </span>
+             </div>
+          </div>
+
+          {/* Test / Sandbox delivery notice */}
+          {otpPreviewNotice && (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-2.5 text-center">
+              <p className="text-xs font-bold text-amber-800">{otpPreviewNotice}</p>
+            </div>
+          )}
+
+          {/* Countdown timer */}
+          <div className="text-center text-xs font-bold text-gray-700">
+            <span>
+              Code expires in:{" "}
+              <span className={`font-mono ${otpSecondsLeft <= 60 ? "text-red-600 font-extrabold animate-pulse" : "text-gray-900"}`}>
+                {formattedTimer}
+              </span>
+            </span>
           </div>
           
-          <div className="flex justify-between gap-2 mt-6">
+          {/* 5-Digit Inputs */}
+          <div className="flex justify-center gap-2 sm:gap-3 my-4">
              {otp.map((digit, index) => (
-               <input key={index} type="text" maxLength={1} value={digit} 
+               <input
+                 key={index}
+                 type="text"
+                 inputMode="numeric"
+                 pattern="[0-9]*"
+                 maxLength={1}
+                 value={digit} 
                  onChange={(e) => {
+                   const numeric = e.target.value.replace(/\D/g, "");
+                   if (!numeric && e.target.value !== "") return;
                    const newOtp = [...otp];
-                   newOtp[index] = e.target.value;
+                   if (numeric.length > 1) {
+                     numeric.slice(0, 5).split("").forEach((ch, idx) => {
+                       if (idx < 5) newOtp[idx] = ch;
+                     });
+                     setOtp(newOtp);
+                     const nextEl = document.getElementById(`otp-${Math.min(numeric.length, 4)}`);
+                     nextEl?.focus();
+                     return;
+                   }
+                   newOtp[index] = numeric.slice(-1);
                    setOtp(newOtp);
-                   if (e.target.value && index < 5) {
+                   if (authError) setAuthError("");
+                   if (numeric && index < 4) {
                      document.getElementById(`otp-${index + 1}`)?.focus();
                    }
                  }}
+                 onKeyDown={(e) => {
+                   if (e.key === "Backspace" && !otp[index] && index > 0) {
+                     document.getElementById(`otp-${index - 1}`)?.focus();
+                   }
+                 }}
                  id={`otp-${index}`}
-                 className="w-10 h-12 sm:w-12 sm:h-14 border border-gray-200 rounded-lg text-center text-xl font-bold focus:outline-none focus:border-[#ba1111] focus:ring-1 focus:ring-[#ba1111] text-gray-900" 
+                 autoFocus={index === 0}
+                 disabled={isVerifyingOtp}
+                 className={`w-12 h-14 sm:w-14 sm:h-16 border rounded-xl text-center text-2xl font-black focus:outline-none transition-all ${
+                   digit
+                     ? "border-[#ba1111] bg-red-50/40 text-gray-900 ring-2 ring-[#ba1111]/30"
+                     : "border-gray-200 bg-white text-gray-900 focus:border-[#ba1111] focus:ring-2 focus:ring-[#ba1111]/20"
+                 }`} 
                />
              ))}
           </div>
           
-          {authError && <p className="text-xs text-red-500 text-center font-medium mt-2">{authError}</p>}
+          {authError && <p className="text-xs text-red-500 text-center font-medium bg-red-50 p-2.5 rounded-xl">{authError}</p>}
           
-          <button onClick={handleVerifyOTP} className="w-full bg-[#ba1111] hover:bg-[#9a0f0f] text-white py-3 rounded-lg font-bold flex items-center justify-center gap-2 transition-colors mt-6">
-            Verify & Continue <ArrowRight className="w-4 h-4" />
+          <button
+            onClick={handleVerifyOTP}
+            disabled={isVerifyingOtp || fullOtp.length !== 5 || otpSecondsLeft <= 0}
+            className={`w-full py-3.5 rounded-xl font-bold flex items-center justify-center gap-2 transition-all mt-6 text-sm shadow-lg ${
+              isVerifyingOtp || fullOtp.length !== 5 || otpSecondsLeft <= 0
+                ? "bg-gray-300 text-gray-500 cursor-not-allowed shadow-none"
+                : "bg-[#ba1111] hover:bg-[#9a0f0f] text-white shadow-[#ba1111]/20 cursor-pointer"
+            }`}
+          >
+            {isVerifyingOtp ? "Verifying 5-Digit OTP..." : "Verify & Complete Registration"} <ArrowRight className="w-4 h-4" />
           </button>
           
-          <p className="text-xs text-gray-500 text-center mt-6">
-            Didn't receive the code? <span className="text-[#ba1111] font-bold cursor-pointer hover:underline">Resend OTP in 3s</span>
-          </p>
+          <div className="text-center pt-2 space-y-2">
+            <p className="text-xs text-gray-500">
+              Didn't receive the code?{" "}
+              {otpCooldown > 0 ? (
+                <span className="font-semibold text-gray-400">Resend in <strong className="text-[#ba1111]">{otpCooldown}s</strong></span>
+              ) : (
+                <button
+                  onClick={handleResendOTP}
+                  disabled={isSendingOtp}
+                  className="text-[#ba1111] font-bold cursor-pointer hover:underline bg-transparent border-0 p-0 text-xs inline"
+                >
+                  {isSendingOtp ? "Sending..." : "Resend 5-Digit OTP"}
+                </button>
+              )}
+            </p>
+            <div>
+              <button
+                type="button"
+                onClick={() => {
+                  setView("register");
+                  setAuthError("");
+                }}
+                className="text-xs text-gray-500 hover:text-gray-800 underline bg-transparent border-0 cursor-pointer"
+              >
+                Change details / Back
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -611,8 +835,23 @@ export default function OnboardingGate({ onComplete }: { onComplete: () => void 
             
             {authError && <p className="text-xs text-red-500 text-center font-medium bg-red-50 p-2 rounded-lg">{authError}</p>}
             
-            <button type="submit" className="w-full bg-[#ba1111] hover:bg-[#9a0f0f] text-white py-3.5 rounded-xl font-bold flex items-center justify-center gap-2 transition-colors mt-4 shadow-lg shadow-[#ba1111]/20">
-              Create Account
+            <button
+              type="submit"
+              disabled={isSendingOtp}
+              className={`w-full py-3.5 rounded-xl font-bold flex items-center justify-center gap-2 transition-colors mt-4 shadow-lg ${
+                isSendingOtp
+                  ? "bg-gray-400 text-white cursor-not-allowed"
+                  : "bg-[#ba1111] hover:bg-[#9a0f0f] text-white shadow-[#ba1111]/20 cursor-pointer"
+              }`}
+            >
+              {isSendingOtp ? (
+                <>
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                  Sending 5-Digit OTP to Gmail...
+                </>
+              ) : (
+                "Create Account"
+              )}
             </button>
           </form>
         )}

@@ -141,7 +141,15 @@ body {
 
   /* Make the pass printable area and its descendents visible */
   #donor-pass-printable-area,
-  #donor-pass-printable-area * {
+  #donor-pass-printable-area *,
+  .print-cards-wrapper,
+  .print-cards-wrapper *,
+  #donor-pass-cards-wrapper,
+  #donor-pass-cards-wrapper *,
+  #donor-pass-front,
+  #donor-pass-front *,
+  #donor-pass-back,
+  #donor-pass-back * {
     visibility: visible !important;
   }
 
@@ -347,5 +355,16 @@ body {
     text-align: center !important;
     margin: 0 auto !important;
   }
+}
+
+/* Mobile Safe Area & Touch Enhancements */
+@supports (padding: env(safe-area-inset-bottom)) {
+  .pb-safe {
+    padding-bottom: max(16px, env(safe-area-inset-bottom, 16px));
+  }
+}
+
+button, a, input, select, textarea {
+  touch-action: manipulation;
 }
 

@@ -75,7 +75,7 @@ export const LanguageSwitcher: React.FC = () => {
       {isOpen && (
         <div
           id="header-language-dropdown-menu"
-          className="absolute right-0 mt-2 w-72 sm:w-80 bg-[#121216] border border-border-dark shadow-2xl rounded-2xl p-2.5 z-50 text-xs text-text-bright animate-in fade-in-0 zoom-in-95 duration-150 space-y-1.5 ring-1 ring-white/5"
+          className="absolute right-0 mt-2 w-[calc(100vw-32px)] sm:w-80 max-w-xs bg-[#121216] border border-border-dark shadow-2xl rounded-2xl p-2.5 z-50 text-xs text-text-bright animate-in fade-in-0 zoom-in-95 duration-150 space-y-1.5 ring-1 ring-white/5"
         >
           {/* Header */}
           <div className="px-3 py-2 border-b border-border-dark flex items-center justify-between">

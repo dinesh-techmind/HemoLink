@@ -219,10 +219,10 @@ export default function GoogleMapsFinder({ userLat, userLng }: GoogleMapsFinderP
           </div>
 
           {/* Navigation Mode Switcher */}
-          <div className="flex items-center gap-1.5 bg-surface-dark/90 border border-border-dark p-1 rounded-xl shrink-0">
+          <div className="flex items-center gap-1.5 bg-surface-dark/90 border border-border-dark p-1 rounded-xl w-full sm:w-auto overflow-x-auto no-scrollbar shrink-0">
             <button
               onClick={() => setActiveTab("directory")}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold font-mono transition cursor-pointer flex items-center gap-1.5 ${
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold font-mono transition cursor-pointer flex items-center gap-1.5 shrink-0 ${
                 activeTab === "directory"
                   ? "bg-brand-red text-white shadow-md"
                   : "text-text-muted hover:text-text-bright hover:bg-card-dark"
@@ -233,7 +233,7 @@ export default function GoogleMapsFinder({ userLat, userLng }: GoogleMapsFinderP
             </button>
             <button
               onClick={() => setActiveTab("streetview")}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold font-mono transition cursor-pointer flex items-center gap-1.5 ${
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold font-mono transition cursor-pointer flex items-center gap-1.5 shrink-0 ${
                 activeTab === "streetview"
                   ? "bg-amber-500 text-slate-950 shadow-md font-extrabold"
                   : "text-text-muted hover:text-text-bright hover:bg-card-dark"
@@ -244,7 +244,7 @@ export default function GoogleMapsFinder({ userLat, userLng }: GoogleMapsFinderP
             </button>
             <button
               onClick={() => setActiveTab("ai_search")}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold font-mono transition cursor-pointer flex items-center gap-1.5 ${
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold font-mono transition cursor-pointer flex items-center gap-1.5 shrink-0 ${
                 activeTab === "ai_search"
                   ? "bg-purple-600 text-white shadow-md"
                   : "text-text-muted hover:text-text-bright hover:bg-card-dark"
