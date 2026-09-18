@@ -121,7 +121,7 @@ function LeafletFallbackMap({
     if (!L || !mapInstanceRef.current || !markersLayerRef.current) return;
 
     // 1. Add Donor markers with blood groups
-    donors.forEach((donor) => {
+    (donors || []).forEach((donor) => {
       const { lat, lng } = donor.location;
       if (!lat || !lng) return;
 
@@ -348,7 +348,7 @@ export default function MapContainer(props: MapContainerProps) {
           </AdvancedMarker>
 
           {/* Donors Pins */}
-          {props.donors.map((donor) => {
+          {(props.donors || []).map((donor) => {
             const { lat, lng } = donor.location;
             if (!lat || !lng) return null;
             const isSelected = activeDonor?.uid === donor.uid;

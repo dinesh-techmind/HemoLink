@@ -103,7 +103,14 @@ export function getDonorPassPhotoUrl(options: {
   }
 
   // If a custom photo URL is provided (not empty and not default SVG/placeholder)
-  if (options.profilePhotoUrl && options.profilePhotoUrl.startsWith("http") && !options.profilePhotoUrl.includes("ui-avatars")) {
+  if (
+    options.profilePhotoUrl &&
+    (options.profilePhotoUrl.startsWith("http") ||
+     options.profilePhotoUrl.startsWith("data:image") ||
+     options.profilePhotoUrl.startsWith("blob:") ||
+     options.profilePhotoUrl.startsWith("/")) &&
+    !options.profilePhotoUrl.includes("ui-avatars")
+  ) {
     return { photoUrl: options.profilePhotoUrl, detectedGender, label: "Custom Profile Photo" };
   }
 

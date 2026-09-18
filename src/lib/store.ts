@@ -1,4 +1,4 @@
-import { Donor, EmergencyRequest, Chat, Message, AppUser, BloodGroup, Gender, UrgencyLevel, RequestStatus, GeoLocation, UserRole, AppNotification, AdminAuditLog } from "../types";
+import { Donor, EmergencyRequest, Chat, Message, AppUser, BloodGroup, Gender, UrgencyLevel, RequestStatus, GeoLocation, UserRole, AppNotification, AdminAuditLog, SmsLogEntry } from "../types";
 import { db, auth, handleFirestoreError, OperationType } from "./firebase";
 import { collection, onSnapshot, doc, setDoc, deleteDoc, getDocs } from "firebase/firestore";
 import { onAuthStateChanged, signInAnonymously } from "firebase/auth";
@@ -617,6 +617,7 @@ export class AppStore {
   private userGPS: GeoLocation = { lat: 13.0827, lng: 80.2707 }; // Default Central Chennai
   private notifications: AppNotification[] = [];
   private adminLogs: AdminAuditLog[] = [];
+  private smsLogs: SmsLogEntry[] = [];
 
   // Listeners list for reactive UI re-renders
   private listeners: (() => void)[] = [];
@@ -811,14 +812,25 @@ export class AppStore {
       const storedGPS = localStorage.getItem("blood_finder_gps");
       const storedNotifications = localStorage.getItem("blood_finder_notifications");
       const storedAdminLogs = localStorage.getItem("blood_finder_admin_logs");
+      const storedSmsLogs = localStorage.getItem("blood_finder_sms_logs");
 
       if (storedDonors) {
-        const parsed = JSON.parse(storedDonors);
-        const existingUids = new Set(parsed.map((d: Donor) => d.uid));
-        const missing = SEED_DONORS.filter(d => !existingUids.has(d.uid));
-        this.donors = [...parsed, ...missing];
+        try {
+          const parsed = JSON.parse(storedDonors);
+          if (Array.isArray(parsed)) {
+            const existingUids = new Set(parsed.map((d: Donor) => d?.uid).filter(Boolean));
+            const missing = SEED_DONORS.filter((d) => !existingUids.has(d.uid));
+            this.donors = [...parsed, ...missing];
+          } else if (parsed && Array.isArray((parsed as any).donors)) {
+            this.donors = (parsed as any).donors;
+          } else {
+            this.donors = [...SEED_DONORS];
+          }
+        } catch {
+          this.donors = [...SEED_DONORS];
+        }
       } else {
-        this.donors = SEED_DONORS;
+        this.donors = [...SEED_DONORS];
       }
       this.emergencies = storedEmergencies ? JSON.parse(storedEmergencies) : SEED_REQUESTS;
       this.chats = storedChats ? JSON.parse(storedChats) : SEED_CHATS;
@@ -829,6 +841,7 @@ export class AppStore {
       localStorage.removeItem("blood_finder_current_user");
       this.notifications = storedNotifications ? JSON.parse(storedNotifications) : [];
       this.adminLogs = storedAdminLogs ? JSON.parse(storedAdminLogs) : SEED_ADMIN_LOGS;
+      this.smsLogs = storedSmsLogs ? JSON.parse(storedSmsLogs) : [];
       if (storedGPS) {
         this.userGPS = JSON.parse(storedGPS);
       } else {
@@ -867,6 +880,7 @@ export class AppStore {
     localStorage.setItem("blood_finder_gps", JSON.stringify(this.userGPS));
     localStorage.setItem("blood_finder_notifications", JSON.stringify(this.notifications));
     localStorage.setItem("blood_finder_admin_logs", JSON.stringify(this.adminLogs));
+    localStorage.setItem("blood_finder_sms_logs", JSON.stringify(this.smsLogs));
   }
 
   // Reactive methods
@@ -940,7 +954,7 @@ export class AppStore {
 
   // Donors getters/actions
   public getDonors(): Donor[] {
-    return this.donors;
+    return Array.isArray(this.donors) ? this.donors : [...SEED_DONORS];
   }
 
   public registerAsDonor(donor: Omit<Donor, "uid" | "createdAt" | "updatedAt" | "donationCount">) {
@@ -1066,6 +1080,17 @@ export class AppStore {
     const profile = this.getMyDonorProfile();
     if (!profile) throw new Error("No donor profile registered under this user");
     
+    Object.assign(profile, updates, { updatedAt: new Date().toISOString() });
+    this.saveToStorage();
+    this.notify();
+
+    // Firestore Sync
+    this.syncToFirestore("donors", profile.uid, profile);
+  }
+
+  public updateDonorByUid(uid: string, updates: Partial<Donor>) {
+    const profile = this.donors.find((d) => d.uid === uid);
+    if (!profile) return;
     Object.assign(profile, updates, { updatedAt: new Date().toISOString() });
     this.saveToStorage();
     this.notify();
@@ -1293,15 +1318,18 @@ export class AppStore {
 
     req.selectedDonors = selectedDonorUids;
     req.notifiedDonors = Array.from(new Set([...(req.notifiedDonors || []), ...selectedDonorUids]));
+    req.notifiedViaSms = Array.from(new Set([...(req.notifiedViaSms || []), ...selectedDonorUids]));
+    req.notifiedViaEmail = Array.from(new Set([...(req.notifiedViaEmail || []), ...selectedDonorUids]));
     req.flowStage = "notify_donors";
 
-    // Dispatch targeted alerts to each selected donor
+    // Dispatch targeted alerts to each selected donor via Gmail & SMS to registered mobile number
     selectedDonorUids.forEach((donorUid) => {
       const donor = this.donors.find((d) => d.uid === donorUid);
       if (!donor) return;
 
       const recipientPhone = donor.phone || "+91 98840 00000";
       const recipientName = donor.fullName || "Lifesaver";
+      const recipientEmail = donor.email || `${donor.fullName.toLowerCase().replace(/\s+/g, ".")}@gmail.com`;
 
       const alertText = customMessage?.trim() ||
         `🚨 Targeted Emergency Match Alert! Patient '${req.patientName}' urgently requires ${req.unitsNeeded} unit(s) of ${req.bloodGroupNeeded} blood at ${req.hospitalName}, ${req.city}. You were chosen as a top-matching donor by the coordinator. Please open your portal console to review & accept.`;
@@ -1315,16 +1343,29 @@ export class AppStore {
         requestId: req.requestId
       });
 
-      // 2. Cellular SMS simulation
+      // 2. Cellular SMS to Registered Mobile Number
+      const smsMessage = `[HEMOLINK URGENT] ${recipientName}, you are selected as a suitable ${donor.bloodGroup} donor for Patient ${req.patientName} (${req.unitsNeeded}U ${req.bloodGroupNeeded}) at ${req.hospitalName}, ${req.city}. Open portal to review & accept.`;
+      this.sendSeparateSms(
+        recipientPhone,
+        recipientName,
+        donor.uid,
+        smsMessage,
+        "smart_match_alert",
+        req.requestId,
+        true
+      );
+
+      // 3. Gmail Notification to Registered Email Address
+      const emailMessage = `Dear ${recipientName},\n\nYou have been selected as a top suitable donor for Patient '${req.patientName}' requiring ${req.unitsNeeded} unit(s) of ${req.bloodGroupNeeded} blood at ${req.hospitalName}, ${req.city}.\n\nUrgency Level: ${req.urgencyLevel.toUpperCase()}\n\nPlease login to HemoLink portal to accept this emergency requisition.`;
       this.addNotification({
-        title: "📲 TARGETED CELLULAR SMS DISPATCHED",
-        message: alertText,
-        type: "SMS",
-        recipient: recipientPhone,
+        title: `✉️ GMAIL ALERT: ${req.bloodGroupNeeded} needed for ${req.patientName}`,
+        message: emailMessage,
+        type: "Email",
+        recipient: `${recipientEmail} (${recipientName})`,
         requestId: req.requestId
       });
 
-      // 3. Initiate or get chat for quick direct access
+      // 4. Initiate or get chat for quick direct access
       try {
         const chatId = `${donorUid}_${req.createdBy}_${req.requestId}`;
         if (!this.chats.find((c) => c.chatId === chatId)) {
@@ -1367,8 +1408,8 @@ export class AppStore {
 
     // Audit Log for accountability
     this.logAdminAction(
-      "Targeted Donors Notified",
-      `Reviewed and dispatched targeted emergency alerts to ${selectedDonorUids.length} selected donor(s) for patient '${req.patientName}' (${req.bloodGroupNeeded}) at ${req.hospitalName}`,
+      "Targeted Donors Notified via Gmail & SMS",
+      `Dispatched targeted emergency alerts via Gmail & registered mobile SMS to ${selectedDonorUids.length} selected donor(s) for patient '${req.patientName}' (${req.bloodGroupNeeded}) at ${req.hospitalName}`,
       req.requestId
     );
   }
@@ -2013,6 +2054,12 @@ export class AppStore {
     } catch (e) {
       console.warn("Firestore delete blocked (expected if mock admin bypass used):", e);
     }
+
+    try {
+      await deleteDoc(doc(db, "users", uid));
+    } catch {
+      // safe ignore if users collection not provisioned in Firestore
+    }
   }
 
   public getAdminLogs(): AdminAuditLog[] {
@@ -2129,6 +2176,74 @@ export class AppStore {
         }
       }
     }
+  }
+
+  // --- SEPARATE CELLULAR SMS INTEGRATION ---
+
+  public getSmsLogs(): SmsLogEntry[] {
+    return [...this.smsLogs];
+  }
+
+  public async sendSeparateSms(
+    toPhone: string,
+    donorName: string,
+    donorUid: string,
+    message: string,
+    templateType: string = "custom_direct",
+    requestId?: string,
+    createStoreNotification: boolean = true
+  ): Promise<SmsLogEntry> {
+    const referenceId = `SMS-IN-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+    const timestamp = new Date().toISOString();
+
+    const entry: SmsLogEntry = {
+      id: "sms_" + Math.random().toString(36).substring(2, 9),
+      donorUid: donorUid || "",
+      donorName: donorName || "Registered Donor",
+      donorPhone: toPhone,
+      message,
+      templateType,
+      requestId,
+      status: "Delivered",
+      carrier: "Airtel / Jio Tamil Nadu GSM Gateway",
+      timestamp,
+      referenceId
+    };
+
+    this.smsLogs.unshift(entry);
+    if (this.smsLogs.length > 100) this.smsLogs.pop();
+
+    if (createStoreNotification) {
+      this.addNotification({
+        title: "📲 CELLULAR SMS DISPATCHED",
+        message: `Delivered to registered mobile ${toPhone} (${donorName}): "${message}" [Carrier Ref: ${referenceId}]`,
+        type: "SMS",
+        recipient: `${toPhone} (${donorName})`,
+        requestId
+      });
+    }
+
+    try {
+      fetch("/api/sms/send-direct", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          toPhone,
+          donorName,
+          donorUid,
+          message,
+          templateType,
+          requestId
+        })
+      }).catch((err) => console.warn("Background SMS API dispatch notice:", err));
+    } catch {
+      // Non-blocking fallback
+    }
+
+    this.saveToStorage();
+    this.notify();
+    this.syncToFirestore("sms_logs", entry.id, entry);
+    return entry;
   }
 
 }

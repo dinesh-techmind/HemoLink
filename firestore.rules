@@ -13,7 +13,10 @@ service cloud.firestore {
     }
 
     function isAdmin() {
-      return isSignedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+      return isSignedIn() && (
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
+        (request.auth.token.email == 'srini16dinesh@gmail.com' && request.auth.token.email_verified == true)
+      );
     }
     
     function isValidId(id) { 
@@ -68,6 +71,21 @@ service cloud.firestore {
         && data.timestamp is string && data.timestamp.size() <= 64;
     }
 
+    function isValidSmsLog(data) {
+      return data != null
+        && (!('id' in data) || (data.id is string && data.id.size() <= 128))
+        && (!('donorUid' in data) || (data.donorUid is string && data.donorUid.size() <= 128))
+        && (!('donorName' in data) || (data.donorName is string && data.donorName.size() <= 128))
+        && data.donorPhone is string && data.donorPhone.size() <= 64
+        && data.message is string && data.message.size() <= 2000
+        && (!('templateType' in data) || (data.templateType is string && data.templateType.size() <= 64))
+        && (!('requestId' in data) || (data.requestId is string && data.requestId.size() <= 128))
+        && data.status is string && data.status.size() <= 32
+        && (!('carrier' in data) || (data.carrier is string && data.carrier.size() <= 128))
+        && data.timestamp is string && data.timestamp.size() <= 64
+        && (!('referenceId' in data) || (data.referenceId is string && data.referenceId.size() <= 128));
+    }
+
     // Donors collection: Public readers, robust validation-checked writers
     match /donors/{donorId} {
       allow read: if true;
@@ -108,8 +126,21 @@ service cloud.firestore {
       allow read, write: if isValidId(messageId);
     }
 
+    // SMS dispatch logs: Public read and valid log generation for multi-channel dispatch auditing
+    match /sms_logs/{smsId} {
+      allow get, list: if true;
+      allow create, update: if isValidId(smsId) && isValidSmsLog(incoming());
+      allow delete: if isAdmin();
+    }
+
     // Administrative access authorization matching table lookup
     match /admins/{adminId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // Test connection endpoint
+    match /test/{testId} {
       allow read: if true;
       allow write: if false;
     }

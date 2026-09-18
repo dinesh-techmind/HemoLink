@@ -87,13 +87,33 @@ export function checkDonorEligibility(lastDonationDate: string | null): {
  * - Track Record / Reliability: 10% (>5 donations = 10pts, 1-5 donations = 7pts, 0 donations = 4pts)
  */
 export function rankDonorsForEmergency(
-  request: EmergencyRequest,
-  donors: Donor[],
+  param1: EmergencyRequest | Donor[],
+  param2: Donor[] | EmergencyRequest,
   options: { includeIncompatible?: boolean } = { includeIncompatible: false }
 ): RankedDonorMatch[] {
+  // Support both (request, donors) and (donors, request) parameter ordering safely
+  let request: EmergencyRequest;
+  let donorsList: Donor[];
+
+  if (Array.isArray(param1)) {
+    donorsList = param1;
+    request = param2 as EmergencyRequest;
+  } else {
+    request = param1 as EmergencyRequest;
+    donorsList = (Array.isArray(param2) ? param2 : []) as Donor[];
+  }
+
+  if (!request || !request.requestId) {
+    return [];
+  }
+
+  if (!Array.isArray(donorsList)) {
+    donorsList = [];
+  }
+
   const reqLoc = request.location || { lat: 13.0827, lng: 80.2707 };
 
-  const evaluated: RankedDonorMatch[] = donors.map((donor) => {
+  const evaluated: RankedDonorMatch[] = donorsList.map((donor) => {
     // 1. Blood Compatibility
     const compat = checkBloodCompatibility(donor.bloodGroup, request.bloodGroupNeeded);
     let bloodScore = 0;
@@ -293,3 +313,193 @@ export function determineCurrentFlowStage(req: EmergencyRequest): MatchingFlowSt
   }
   return "smart_matching";
 }
+
+/**
+ * Evaluates whether a donor is clinically and administratively suitable to accept an emergency request.
+ * CRITICAL RULE: Donor acceptance should show ONLY to suitable donors and must NOT be shown or displayed in other profiles.
+ */
+export function getDonorSuitability(
+  donor: Donor | null | undefined,
+  request: EmergencyRequest,
+  currentUserId?: string
+): {
+  isSuitable: boolean;
+  canAccept: boolean;
+  reason:
+    | "suitable_exact"
+    | "suitable_compatible"
+    | "incompatible_blood"
+    | "not_a_donor"
+    | "own_request"
+    | "in_cooldown"
+    | "not_targeted"
+    | "already_accepted"
+    | "fulfilled";
+  badgeText: string;
+  compatibilityLabel: string;
+} {
+  // 1. If not authenticated or has no donor profile
+  if (!donor) {
+    return {
+      isSuitable: false,
+      canAccept: false,
+      reason: "not_a_donor",
+      badgeText: "Donor Profile Required",
+      compatibilityLabel: "No Profile"
+    };
+  }
+
+  // 2. User cannot accept their own emergency requisition
+  if (currentUserId && request.createdBy === currentUserId) {
+    return {
+      isSuitable: false,
+      canAccept: false,
+      reason: "own_request",
+      badgeText: "Your Requisition (Coordinator View)",
+      compatibilityLabel: "Requester"
+    };
+  }
+
+  // 3. Requisition is already fulfilled or inactive
+  if (request.status !== "Active") {
+    return {
+      isSuitable: false,
+      canAccept: false,
+      reason: "fulfilled",
+      badgeText: `Requisition ${request.status}`,
+      compatibilityLabel: request.status
+    };
+  }
+
+  // 4. Check if requisition already has an accepted donor
+  if (request.acceptedDonorId) {
+    const isThisDonor = request.acceptedDonorId === donor.uid;
+    return {
+      isSuitable: isThisDonor,
+      canAccept: false,
+      reason: "already_accepted",
+      badgeText: isThisDonor ? "✓ You Accepted This Requisition" : "Accepted by Another Matched Donor",
+      compatibilityLabel: isThisDonor ? "Accepted" : "Fulfilled"
+    };
+  }
+
+  // 5. Clinical Blood Group Compatibility Check
+  const compat = checkBloodCompatibility(donor.bloodGroup, request.bloodGroupNeeded);
+  if (!compat.compatible) {
+    return {
+      isSuitable: false,
+      canAccept: false,
+      reason: "incompatible_blood",
+      badgeText: `Incompatible (${donor.bloodGroup} cannot donate to ${request.bloodGroupNeeded})`,
+      compatibilityLabel: "Incompatible Blood"
+    };
+  }
+
+  // 6. Safe interval WHO cooldown check
+  const eligibility = checkDonorEligibility(donor.lastDonationDate);
+  if (!eligibility.isEligible) {
+    return {
+      isSuitable: false,
+      canAccept: false,
+      reason: "in_cooldown",
+      badgeText: `In Cooldown (${eligibility.cooldownDaysRemaining}d remaining)`,
+      compatibilityLabel: "Medical Cooldown"
+    };
+  }
+
+  // 7. Targeted dispatch check: If admin/coordinator selected specific donors, check if this donor was notified
+  if (request.notifiedDonors && request.notifiedDonors.length > 0) {
+    const wasTargeted = request.notifiedDonors.includes(donor.uid);
+    if (!wasTargeted) {
+      return {
+        isSuitable: false,
+        canAccept: false,
+        reason: "not_targeted",
+        badgeText: "Targeted to Other Selected Donors",
+        compatibilityLabel: compat.isExact ? "Exact Match (Not Targeted)" : "Compatible (Not Targeted)"
+      };
+    }
+  }
+
+  // 8. Fully Suitable Match!
+  const isExact = compat.isExact;
+  return {
+    isSuitable: true,
+    canAccept: true,
+    reason: isExact ? "suitable_exact" : "suitable_compatible",
+    badgeText: isExact
+      ? `Exact Match (${donor.bloodGroup}) • Suitable Lifesaver`
+      : `Compatible Match (${donor.bloodGroup} → ${request.bloodGroupNeeded}) • Suitable Lifesaver`,
+    compatibilityLabel: isExact ? "Exact Match" : "Compatible Group"
+  };
+}
+
+/**
+ * Builds a direct web Gmail compose URL pre-populated with emergency blood requisition details
+ */
+export function generateGmailComposeUrl(
+  recipientEmail: string,
+  subject: string,
+  body: string
+): string {
+  const cleanEmail = recipientEmail.trim();
+  return `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(cleanEmail)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+}
+
+/**
+ * Builds a native cellular device SMS URL (sms:phone?body=message)
+ */
+export function generateNativeSmsUrl(
+  recipientPhone: string,
+  body: string
+): string {
+  const cleanPhone = recipientPhone.replace(/[^\d+]/g, "");
+  return `sms:${cleanPhone}?body=${encodeURIComponent(body)}`;
+}
+
+/**
+ * Standard emergency notification email template
+ */
+export function formatEmergencyEmailPayload(
+  donor: Donor,
+  request: EmergencyRequest,
+  customNote?: string
+): { subject: string; body: string } {
+  const subject = `🚨 URGENT CLINICAL MATCH: Blood Donor Needed (${request.bloodGroupNeeded}) - ${request.hospitalName}`;
+  const body = `Dear ${donor.fullName},
+
+You have been selected through our Smart Donor Matching Algorithm as a TOP SUITABLE DONOR for an urgent blood requisition.
+
+PATIENT & CLINICAL DETAILS:
+- Patient Name: ${request.patientName}
+- Blood Group Required: ${request.bloodGroupNeeded} (${donor.bloodGroup} donor matched)
+- Units Required: ${request.unitsNeeded} unit(s)
+- Urgency Level: ${request.urgencyLevel.toUpperCase()}
+- Hospital: ${request.hospitalName}
+- Hospital Address: ${request.hospitalAddress}, ${request.city}, ${request.state}
+${customNote ? `\nCOORDINATOR NOTE:\n"${customNote.trim()}"\n` : ""}
+HOW TO ACCEPT:
+Please login to the HemoLink Blood Finder portal to view this requisition and click "Accept Emergency Donation".
+Portal Link: ${typeof window !== "undefined" ? window.location.origin : "https://hemolink.app"}
+
+Your direct contribution can save patient lives today.
+
+Thank you,
+Emergency Blood Coordination Center & Red Cross Network`;
+
+  return { subject, body };
+}
+
+/**
+ * Standard cellular SMS template for registered mobile numbers
+ */
+export function formatEmergencySmsPayload(
+  donor: Donor,
+  request: EmergencyRequest,
+  customNote?: string
+): string {
+  const origin = typeof window !== "undefined" ? window.location.origin : "hemolink.app";
+  const notePart = customNote ? ` Note: ${customNote.trim()}` : "";
+  return `[HEMOLINK URGENT] ${donor.fullName}, you are a matched ${donor.bloodGroup} donor for Patient ${request.patientName} needing ${request.unitsNeeded}U of ${request.bloodGroupNeeded} blood at ${request.hospitalName}, ${request.city}.${notePart} Accept now at: ${origin}`;
+}
+

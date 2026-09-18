@@ -108,6 +108,20 @@ body {
 /* Print Styles - Specifically for Donor Identity Pass printing              */
 /* ========================================================================= */
 @media print {
+  @page {
+    size: auto;
+    margin: 10mm;
+  }
+
+  /* Force exact color and background rendering across all browsers */
+  *,
+  *::before,
+  *::after {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    color-adjust: exact !important;
+  }
+
   /* Hide standard background and unneeded app chrome */
   html, body {
     background: #ffffff !important;
@@ -134,42 +148,53 @@ body {
   /* Reset modal parents to avoid viewport clipping or fixed positioning bugs */
   #donor-pass-modal-root {
     position: static !important;
-    display: block !important;
+    display: flex !important;
+    justify-content: center !important;
+    align-items: center !important;
     padding: 0 !important;
-    margin: 0 !important;
+    margin: 0 auto !important;
     overflow: visible !important;
     width: 100% !important;
     height: auto !important;
     background: transparent !important;
+    visibility: visible !important;
   }
 
   #donor-pass-modal-window {
     position: static !important;
-    display: block !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
     background: transparent !important;
     border: none !important;
     box-shadow: none !important;
     overflow: visible !important;
+    width: 100% !important;
     max-width: 100% !important;
     max-height: none !important;
     padding: 0 !important;
     margin: 0 auto !important;
+    visibility: visible !important;
   }
 
-  /* Position printable pass container cleanly at the top of the printed page */
+  /* Center printable pass container cleanly on the printed page */
   #donor-pass-printable-area {
-    position: absolute !important;
-    left: 0 !important;
-    top: 0 !important;
+    position: relative !important;
+    left: auto !important;
+    top: auto !important;
     width: 100% !important;
+    max-width: 100% !important;
     margin: 0 auto !important;
-    padding: 12px 0 !important;
-    background: #ffffff !important;
+    padding: 6mm 0 !important;
+    background: transparent !important;
     display: flex !important;
+    flex-direction: column !important;
     justify-content: center !important;
-    align-items: flex-start !important;
+    align-items: center !important;
     box-shadow: none !important;
     border: none !important;
+    text-align: center !important;
   }
 
   #donor-pass-cards-wrapper {
@@ -177,11 +202,23 @@ body {
     flex-direction: row !important;
     flex-wrap: wrap !important;
     justify-content: center !important;
-    align-items: flex-start !important;
-    gap: 24px !important;
+    align-items: center !important;
+    gap: 8mm !important;
     width: 100% !important;
-    max-width: none !important;
+    max-width: 100% !important;
     margin: 0 auto !important;
+    text-align: center !important;
+  }
+
+  #donor-pass-cards-wrapper > div {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    margin: 0 auto !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    text-align: center !important;
   }
 
   /* Hide backdrop, headers, footers, labels, toolbars */
@@ -195,22 +232,120 @@ body {
     visibility: hidden !important;
   }
 
-  /* High fidelity print color retention & page break protection */
+  /* High fidelity print color retention & page break protection for cards */
   #donor-pass-front,
   #donor-pass-back {
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
     color-adjust: exact !important;
-    box-shadow: none !important;
-    border: 1px solid #e5e7eb !important;
+    background-color: #ffffff !important;
+    border-radius: 24px !important;
+    overflow: hidden !important;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08) !important;
+    border: 1.5px solid #d1d5db !important;
     page-break-inside: avoid !important;
     break-inside: avoid !important;
-    margin: 0 10px 16px 10px !important;
+    margin: 0 auto 16px auto !important;
+    width: 350px !important;
+    max-width: 350px !important;
+    text-align: left !important;
   }
 
-  @page {
-    size: auto;
-    margin: 8mm;
+  /* Specific background preservation for card elements */
+  [data-print-bg="crimson-banner"],
+  .donor-pass-crimson-banner {
+    background: linear-gradient(180deg, #8B0000 0%, #A00000 50%, #700000 100%) !important;
+    background-color: #8B0000 !important;
+    color: #ffffff !important;
+  }
+
+  [data-print-bg="blood-badge"],
+  #donor-pass-blood-type-display div {
+    background: linear-gradient(90deg, #8B0000 0%, #A00000 50%, #8B0000 100%) !important;
+    background-color: #8B0000 !important;
+    color: #ffffff !important;
+    border: 1px solid rgba(255, 255, 255, 0.6) !important;
+  }
+
+  [data-print-bg="qr-strip"],
+  #donor-pass-qr-section {
+    background-color: #7A0000 !important;
+    color: #ffffff !important;
+  }
+
+  [data-print-bg="qr-box"],
+  #donor-pass-qr-container {
+    background-color: #ffffff !important;
+  }
+
+  [data-print-bg="dark-strip"] {
+    background-color: #520000 !important;
+    color: #ffffff !important;
+  }
+
+  [data-print-bg="back-header"] {
+    background-color: #8B0000 !important;
+    color: #ffffff !important;
+  }
+
+  [data-print-bg="emergency-box"] {
+    background-color: #FFF5F5 !important;
+    border-color: #FECACA !important;
+  }
+
+  [data-print-bg="table-icon"] {
+    background-color: #A00000 !important;
+    color: #ffffff !important;
+  }
+
+  [data-print-bg="photo-frame"] {
+    background-color: #ffffff !important;
+    border-color: #ffffff !important;
+  }
+
+  /* Perfectly center the blood type showcase on the card and page */
+  #donor-pass-blood-type-display {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    text-align: center !important;
+    width: 100% !important;
+    margin: 0 auto 6px auto !important;
+  }
+
+  #donor-pass-blood-type-display > div {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    margin: 0 auto !important;
+    text-align: center !important;
+  }
+
+  /* Perfectly center the QR code and scan verification label on the card and page */
+  #donor-pass-qr-section {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    text-align: center !important;
+    width: 100% !important;
+    margin: 0 auto !important;
+    padding: 8px 12px !important;
+  }
+
+  #donor-pass-qr-container {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    margin: 0 auto 4px auto !important;
+    text-align: center !important;
+  }
+
+  #donor-pass-qr-section p,
+  #donor-pass-qr-section div {
+    text-align: center !important;
+    margin: 0 auto !important;
   }
 }
 

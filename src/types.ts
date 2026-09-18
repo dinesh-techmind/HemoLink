@@ -50,6 +50,8 @@ export interface EmergencyRequest {
   respondedDonors: string[];       // list of Donor UIDs who clicked respond
   selectedDonors?: string[];      // Donors selected by admin/requester for notification
   notifiedDonors?: string[];      // Donors who have been sent notifications
+  notifiedViaSms?: string[];      // Donors who received SMS on their registered mobile number
+  notifiedViaEmail?: string[];    // Donors who received Gmail/Email alert
   acceptedDonorId?: string;       // UID of donor who accepted
   confirmedDonationAt?: string;   // Timestamp when donation was confirmed
   flowStage?: MatchingFlowStage;  // Current stage in smart matching & fulfillment pipeline
@@ -152,4 +154,18 @@ export interface AdminAuditLog {
   adminId: string;          // Admin's UID or identifier
   adminEmail: string;       // Admin's email for clear accountability
   timestamp: string;        // ISO format string
+}
+
+export interface SmsLogEntry {
+  id: string;
+  donorUid: string;
+  donorName: string;
+  donorPhone: string;
+  message: string;
+  templateType?: string;
+  requestId?: string;
+  status: "Delivered" | "Sent" | "Failed";
+  carrier: string;
+  timestamp: string;
+  referenceId: string;
 }

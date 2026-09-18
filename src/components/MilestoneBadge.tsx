@@ -16,6 +16,7 @@ interface MilestoneBadgeProps {
   showProgress?: boolean;
   onClick?: () => void;
   className?: string;
+  style?: React.CSSProperties;
 }
 
 export const MilestoneTierIcon: React.FC<{ tierId: MilestoneTierId; className?: string }> = ({
@@ -43,7 +44,8 @@ export const MilestoneBadge: React.FC<MilestoneBadgeProps> = ({
   variant = "pill",
   showProgress = false,
   onClick,
-  className = ""
+  className = "",
+  style
 }) => {
   const units = typeof propUnits === "number" ? propUnits : getDonorSavedUnits(donor);
   const tier = getMilestoneTier(units);
@@ -51,22 +53,26 @@ export const MilestoneBadge: React.FC<MilestoneBadgeProps> = ({
 
   // Variant 1: Compact Pill Chip (For Directory Cards & Tables)
   if (variant === "pill" || variant === "compact") {
+    const hasCustomColor = Boolean(style?.color || className.includes("!text-") || className.includes("text-white"));
+    const hasCustomBg = Boolean(style?.backgroundColor || className.includes("!bg-") || className.includes("bg-[#"));
+
     return (
       <button
         type="button"
         onClick={onClick}
+        style={style}
         title={`${tier.name}: ${units} units saved (${tier.description})`}
         className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[10.5px] font-bold font-display select-none transition-all duration-200 ${
           onClick ? "cursor-pointer hover:scale-105 active:scale-95" : "cursor-default"
-        } ${tier.colors.badgeBg} ${tier.colors.badgeBorder} ${tier.colors.badgeText} ${className}`}
+        } ${hasCustomBg ? "" : tier.colors.badgeBg} ${tier.colors.badgeBorder} ${hasCustomColor ? "" : tier.colors.badgeText} ${className}`}
       >
-        <span className={`${tier.colors.iconColor} shrink-0`}>
+        <span className={`${hasCustomColor ? "text-inherit opacity-90" : tier.colors.iconColor} shrink-0`}>
           <MilestoneTierIcon tierId={tier.id} className="w-3.5 h-3.5" />
         </span>
         <span className="font-extrabold uppercase tracking-wide whitespace-nowrap">
           {tier.shortLabel}
         </span>
-        <span className="text-[10px] opacity-85 font-mono">
+        <span className={`text-[10px] ${hasCustomColor ? "opacity-95" : "opacity-85"} font-mono`}>
           {units} {tier.id === "diamond" ? "Lives" : "Units"}
         </span>
         {tier.id === "diamond" && (

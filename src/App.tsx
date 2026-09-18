@@ -23,8 +23,13 @@ import { MilestoneShowcaseModal } from "./components/MilestoneShowcaseModal";
 import { LogClinicalDonationModal } from "./components/LogClinicalDonationModal";
 import { AdminQrScannerModal } from "./components/AdminQrScannerModal";
 import { SmartDonorMatchingModal } from "./components/SmartDonorMatchingModal";
+import { DirectDonorSmsModal } from "./components/DirectDonorSmsModal";
+import { AdminSmartMatchingReview } from "./components/AdminSmartMatchingReview";
+import { ShareSosAlertModal } from "./components/ShareSosAlertModal";
 import { HemolinkIcon, HemolinkLogo } from "./components/HemolinkLogo";
 import { getDonorSavedUnits, getMilestoneTier, getNextMilestoneProgress } from "./lib/milestones";
+import { formatDonorId } from "./lib/donorVerification";
+import { getDonorSuitability } from "./lib/smartMatching";
 import { useLanguage } from "./lib/i18n";
 import { saveRecentHospital } from "./lib/hospitals";
 import {
@@ -57,6 +62,7 @@ import {
   Globe,
   Sliders,
   Trash2,
+  Loader2,
   AlertTriangle,
   Lock,
   UserPlus,
@@ -83,6 +89,7 @@ import {
   Radio,
   BellRing,
   Camera,
+  Smartphone,
   Upload,
   Users
 } from "lucide-react";
@@ -140,6 +147,38 @@ export default function App() {
 
   // Detailed Deregister Confirmation Modal State
   const [showDeregisterModal, setShowDeregisterModal] = useState<boolean>(false);
+
+  // Selected Emergency for Share SOS Alert social media generation modal
+  const [sharingEmergency, setSharingEmergency] = useState<EmergencyRequest | null>(null);
+
+  // Admin user deletion state and feedback banner
+  const [deletingUserUid, setDeletingUserUid] = useState<string | null>(null);
+  const [adminUserActionMsg, setAdminUserActionMsg] = useState<string | null>(null);
+
+  // Direct administrator action to remove registered user account
+  const handleAdminDeleteUser = async (userToDelete: AppUser) => {
+    if (deletingUserUid) return;
+    setDeletingUserUid(userToDelete.uid);
+    try {
+      // Optimistically update users list immediately
+      setAllUsers((prev) => prev.filter((u) => u.uid !== userToDelete.uid));
+      await store.deleteUser(userToDelete.uid);
+      setAdminUserActionMsg(`Registered user account "${userToDelete.fullName}" (${userToDelete.email}) permanently removed.`);
+      setTimeout(() => {
+        setAdminUserActionMsg(null);
+      }, 4500);
+    } catch (err) {
+      console.error("Failed to delete registered user account:", err);
+      // Revert if error
+      setAllUsers(store.getAllUsers());
+      setAdminUserActionMsg("Failed to remove user account. Please check server logs.");
+      setTimeout(() => {
+        setAdminUserActionMsg(null);
+      }, 4500);
+    } finally {
+      setDeletingUserUid(null);
+    }
+  };
 
   // Helper for admin to calculate next donation eligibility
   const getNextDonationSchedule = (lastDonationDateStr?: string) => {
@@ -241,6 +280,9 @@ export default function App() {
   const [formError, setFormError] = useState<string>("");
   const [selectedHospitalForMapModal, setSelectedHospitalForMapModal] = useState<EmergencyRequest | null>(null);
   const [selectedRequestForSmartMatching, setSelectedRequestForSmartMatching] = useState<EmergencyRequest | null>(null);
+  const [smsModalOpen, setSmsModalOpen] = useState<boolean>(false);
+  const [smsModalDonor, setSmsModalDonor] = useState<Donor | null>(null);
+  const [smsModalEmergency, setSmsModalEmergency] = useState<EmergencyRequest | null>(null);
 
   // Become a Donor form fields state
   const [donorFormAge, setDonorFormAge] = useState<number>(25);
@@ -308,11 +350,50 @@ export default function App() {
   useEffect(() => {
     try {
       const searchParams = new URLSearchParams(window.location.search);
-      const passDonorId = searchParams.get("passDonorId") || searchParams.get("donorPass");
+      const emergencyId = searchParams.get("emergencyId") || searchParams.get("sos");
+      if (emergencyId) {
+        handleViewSOS(emergencyId);
+      }
+      
+      let passDonorId = searchParams.get("passDonorId") || searchParams.get("donorPass") || searchParams.get("verify") || searchParams.get("id");
+      if (!passDonorId && typeof window !== "undefined" && window.location.pathname.includes("/verify/donor/")) {
+        const parts = window.location.pathname.split("/verify/donor/");
+        if (parts[1]) {
+          passDonorId = decodeURIComponent(parts[1].split("?")[0].split("/")[0].trim());
+        }
+      }
+
       if (passDonorId) {
-        const found = store.getDonors().find((d) => d.uid === passDonorId || d.uid.toLowerCase() === passDonorId.toLowerCase());
+        const allDonors = store.getDonors();
+        const found = allDonors.find((d) => 
+          d.uid.toLowerCase() === passDonorId?.toLowerCase() ||
+          formatDonorId(d).toLowerCase() === passDonorId?.toLowerCase()
+        );
         if (found) {
           setSelectedPassDonor(found);
+        } else if (searchParams.get("name") && searchParams.get("blood")) {
+          // Reconstruct donor credentials from QR URL parameters when scanned on any mobile device
+          const locParts = (searchParams.get("location") || "Coimbatore, Tamil Nadu").split(",");
+          const synthetic: Donor = {
+            uid: searchParams.get("uid") || passDonorId || `ext-${Date.now()}`,
+            fullName: searchParams.get("name") || "Verified Donor",
+            email: "",
+            phone: searchParams.get("phone") || "+91 94432 10987",
+            age: searchParams.get("age") ? Number(searchParams.get("age")) : 28,
+            gender: (searchParams.get("gender") as any) || "Male",
+            bloodGroup: (searchParams.get("blood") as any) || "O+",
+            city: locParts[0]?.trim() || "Coimbatore",
+            state: locParts[1]?.trim() || "Tamil Nadu",
+            pincode: searchParams.get("pin") || "641001",
+            location: { lat: 11.0168, lng: 76.9558 },
+            isAvailable: searchParams.get("status") !== "COOLDOWN",
+            lastDonationDate: searchParams.get("lastDonated") || null,
+            donationCount: searchParams.get("donations") ? Number(searchParams.get("donations")) : 0,
+            savedUnits: searchParams.get("units") ? Number(searchParams.get("units")) : 0,
+            createdAt: searchParams.get("ts") || new Date().toISOString(),
+            updatedAt: searchParams.get("ts") || new Date().toISOString()
+          };
+          setSelectedPassDonor(synthetic);
         }
       }
     } catch (e) {
@@ -325,9 +406,18 @@ export default function App() {
     if (!selectedPassDonor && donors.length > 0) {
       try {
         const searchParams = new URLSearchParams(window.location.search);
-        const passDonorId = searchParams.get("passDonorId") || searchParams.get("donorPass");
+        let passDonorId = searchParams.get("passDonorId") || searchParams.get("donorPass") || searchParams.get("verify") || searchParams.get("id");
+        if (!passDonorId && typeof window !== "undefined" && window.location.pathname.includes("/verify/donor/")) {
+          const parts = window.location.pathname.split("/verify/donor/");
+          if (parts[1]) {
+            passDonorId = decodeURIComponent(parts[1].split("?")[0].split("/")[0].trim());
+          }
+        }
         if (passDonorId) {
-          const found = donors.find((d) => d.uid === passDonorId || d.uid.toLowerCase() === passDonorId.toLowerCase());
+          const found = donors.find((d) => 
+            d.uid.toLowerCase() === passDonorId?.toLowerCase() ||
+            formatDonorId(d).toLowerCase() === passDonorId?.toLowerCase()
+          );
           if (found) {
             setSelectedPassDonor(found);
           }
@@ -943,6 +1033,46 @@ export default function App() {
       setActiveTab("chats");
     } catch (err: any) {
       alert(err.message || "Failed to respond");
+    }
+  };
+
+  // Dedicated SMS dispatch helper
+  const handleOpenSmsModal = (donor: Donor, req?: EmergencyRequest) => {
+    setSmsModalDonor(donor);
+    setSmsModalEmergency(req || null);
+    setSmsModalOpen(true);
+  };
+
+  // Direct Donor Acceptance of Requisition (Gated strictly to suitable donors)
+  const handleDonorAcceptRequisition = (req: EmergencyRequest) => {
+    if (!currentUser) {
+      alert("Please sign in or select a sandbox donor profile to accept this requisition.");
+      setActiveTab("profile");
+      return;
+    }
+
+    const myProfile = store.getMyDonorProfile();
+    if (!myProfile) {
+      alert("You need a registered donor profile to accept blood requisitions.");
+      setActiveTab("profile");
+      return;
+    }
+
+    const suitability = getDonorSuitability(myProfile, req, currentUser.uid);
+    if (!suitability.canAccept) {
+      alert(`Cannot accept requisition: ${suitability.badgeText}`);
+      return;
+    }
+
+    try {
+      store.donorAcceptEmergencyMatch(req.requestId, myProfile.uid);
+      alert(`🎉 Thank you ${myProfile.fullName}! You have accepted this blood requisition for Patient ${req.patientName}. Hospital contact details and direct chat have been unlocked.`);
+      // Redirect to chats to coordinate directly with seeker
+      const chatId = `${myProfile.uid}_${req.createdBy}_${req.requestId}`;
+      setActiveChatId(chatId);
+      setActiveTab("chats");
+    } catch (err: any) {
+      alert(err.message || "Failed to accept requisition.");
     }
   };
 
@@ -2490,13 +2620,57 @@ export default function App() {
                       <div className="flex items-center gap-2 pl-2">
                         {req.status === "Active" ? (
                           <>
-                            <button
-                              id={`respond-emergency-btn-${req.requestId}`}
-                              onClick={() => handleInitiateRespond(req)}
-                              className="flex-grow bg-brand-red hover:bg-brand-red-dark text-white font-semibold py-2.5 px-4 rounded-xl text-xs transition duration-150 cursor-pointer text-center"
-                            >
-                              Respond & Connect
-                            </button>
+                            {/* GATED DONOR ACCEPTANCE: Only show acceptance action to verified suitable donors */}
+                            {(() => {
+                              const myDonor = store.getMyDonorProfile();
+                              const suitability = getDonorSuitability(myDonor, req, currentUser?.uid);
+                              const isAcceptedByMe = req.acceptedDonorId === myDonor?.uid;
+                              const isAcceptedByOther = req.acceptedDonorId && req.acceptedDonorId !== myDonor?.uid;
+
+                              if (isAcceptedByMe) {
+                                return (
+                                  <div className="flex-grow bg-emerald-950/60 border border-emerald-500/60 text-emerald-300 font-bold py-2.5 px-3 rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-sm">
+                                    <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                                    <span>You Accepted This Requisition</span>
+                                  </div>
+                                );
+                              }
+
+                              if (isAcceptedByOther) {
+                                return (
+                                  <div className="flex-grow bg-zinc-900/80 border border-zinc-800 text-zinc-400 font-mono text-xs py-2.5 px-3 rounded-xl flex items-center justify-center gap-1.5">
+                                    <CheckCircle2 className="w-3.5 h-3.5 text-zinc-500" />
+                                    <span>Accepted by Matched Donor</span>
+                                  </div>
+                                );
+                              }
+
+                              if (suitability.canAccept) {
+                                return (
+                                  <button
+                                    id={`accept-emergency-btn-${req.requestId}`}
+                                    onClick={() => handleDonorAcceptRequisition(req)}
+                                    className="flex-grow bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2.5 px-3.5 rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-lg shadow-emerald-600/25 transition duration-150 cursor-pointer text-center active:scale-98"
+                                    title="You are a verified compatible donor. Click to accept requisition."
+                                  >
+                                    <CheckCircle2 className="w-4 h-4 text-emerald-200" />
+                                    <span>Accept Requisition ({myDonor?.bloodGroup})</span>
+                                  </button>
+                                );
+                              }
+
+                              // For other profiles (not suitable, incompatible blood, cooldown, or seeker view)
+                              return (
+                                <button
+                                  id={`respond-emergency-btn-${req.requestId}`}
+                                  onClick={() => handleInitiateRespond(req)}
+                                  className="flex-grow bg-brand-red hover:bg-brand-red-dark text-white font-semibold py-2.5 px-4 rounded-xl text-xs transition duration-150 cursor-pointer text-center"
+                                >
+                                  Respond & Connect
+                                </button>
+                              );
+                            })()}
+
                             <button
                               id={`calendar-schedule-btn-${req.requestId}`}
                               onClick={() => handleScheduleEmergencyToCalendar(req)}
@@ -2505,18 +2679,17 @@ export default function App() {
                             >
                               <Calendar className="w-4 h-4" />
                             </button>
-                            <a
-                              id={`whatsapp-share-btn-${req.requestId}`}
-                              href={`https://api.whatsapp.com/send?text=${encodeURIComponent(
-                                `🆘 EMERGENCY BLOOD REQUIRED! Patient ${req.patientName} urgently needs ${req.unitsNeeded} units of ${req.bloodGroupNeeded} at ${req.hospitalName}, ${req.city}. Please connect immediately via the Blood Finder portal!`
-                              )}`}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="bg-surface-dark border border-border-dark hover:border-border-dark p-2.5 rounded-xl text-[#25D366] transition flex items-center justify-center shrink-0 cursor-pointer"
-                              title="Broadcast SOS on WhatsApp"
+                            <button
+                              type="button"
+                              id={`share-sos-btn-${req.requestId}`}
+                              onClick={() => setSharingEmergency(req)}
+                              className="bg-surface-dark border border-amber-500/40 hover:border-amber-400/80 hover:bg-amber-500/10 text-amber-300 hover:text-amber-200 font-bold py-2.5 px-3.5 rounded-xl text-xs flex items-center justify-center gap-1.5 transition duration-150 cursor-pointer shrink-0 shadow-sm active:scale-98"
+                              title="Share SOS Alert: Generate pre-filled social media link"
                             >
-                              <Share2 className="w-4 h-4" />
-                            </a>
+                              <Share2 className="w-4 h-4 text-amber-400" />
+                              <span className="hidden sm:inline">Share SOS Alert</span>
+                              <span className="sm:hidden">Share</span>
+                            </button>
                           </>
                         ) : (
                           <div className="w-full text-center text-xs text-text-subtle font-bold uppercase tracking-wider py-2">
@@ -2872,6 +3045,142 @@ export default function App() {
                             ✓ System-Calculated & Tamper-Proof
                           </span>
                         </div>
+                      </div>
+
+                      {/* EXCLUSIVE SUITABLE REQUISITIONS & ACCEPTANCE SECTION */}
+                      <div id="exclusive-suitable-requisitions-box" className="p-4 sm:p-5 bg-gradient-to-br from-[#1A1822] via-surface-dark to-[#16161B] border border-sky-500/30 rounded-xl space-y-4">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-border-dark/80 pb-3">
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="bg-sky-500/15 text-sky-300 text-[10px] font-mono font-bold px-2 py-0.5 rounded border border-sky-500/30">
+                                Privacy Gated Feed
+                              </span>
+                              <span className="bg-emerald-500/15 text-emerald-400 text-[10px] font-mono font-bold px-2 py-0.5 rounded">
+                                Suitable For {myProfile.bloodGroup}
+                              </span>
+                            </div>
+                            <h4 className="font-extrabold text-sm text-text-bright font-display mt-1">
+                              Emergency Blood Requisitions Matched to Your Profile
+                            </h4>
+                            <p className="text-[11px] text-text-muted">
+                              Requisitions where your blood type ({myProfile.bloodGroup}) is clinically compatible and your cooldown window is clear. Acceptance controls are exclusively visible to you.
+                            </p>
+                          </div>
+                        </div>
+
+                        {(() => {
+                          const suitableReqs = emergencies.filter((req) => {
+                            if (req.status !== "Active") return false;
+                            const suitability = getDonorSuitability(myProfile, req, currentUser?.uid);
+                            return suitability.canAccept || req.acceptedDonorId === myProfile?.uid;
+                          });
+
+                          if (suitableReqs.length === 0) {
+                            return (
+                              <div className="text-center py-6 bg-surface-dark/40 rounded-xl border border-dashed border-border-dark space-y-2">
+                                <CheckCircle2 className="w-7 h-7 text-emerald-400/60 mx-auto" />
+                                <h5 className="text-xs font-bold text-text-bright">No active emergencies requiring {myProfile.bloodGroup} right now</h5>
+                                <p className="text-[11px] text-text-muted max-w-md mx-auto">
+                                  Your registered profile is on standby. When a nearby hospital requisitions {myProfile.bloodGroup} blood, you will receive targeted notifications via Gmail and cellular SMS to your registered mobile number ({myProfile.phone || "provided"}).
+                                </p>
+                              </div>
+                            );
+                          }
+
+                          return (
+                            <div className="space-y-3">
+                              {suitableReqs.map((req) => {
+                                const isAcceptedByMe = req.acceptedDonorId === myProfile?.uid;
+                                const distance = calculateDistance(
+                                  userGPS.lat,
+                                  userGPS.lng,
+                                  req.hospitalLocation.lat,
+                                  req.hospitalLocation.lng
+                                );
+
+                                return (
+                                  <div
+                                    key={req.requestId}
+                                    id={`suitable-emergency-card-${req.requestId}`}
+                                    className={`p-3.5 rounded-xl border transition flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+                                      isAcceptedByMe
+                                        ? "bg-emerald-950/30 border-emerald-500/60"
+                                        : "bg-surface-dark border-border-dark hover:border-sky-500/40"
+                                    }`}
+                                  >
+                                    <div className="flex items-start gap-3">
+                                      <div className="w-10 h-10 rounded-xl bg-brand-red/20 border border-brand-red/40 flex flex-col items-center justify-center shrink-0">
+                                        <span className="text-xs font-black text-brand-red font-display leading-none">
+                                          {req.bloodGroupNeeded}
+                                        </span>
+                                        <span className="text-[8px] text-zinc-400 font-mono mt-0.5">{req.unitsNeeded}U</span>
+                                      </div>
+
+                                      <div className="space-y-0.5">
+                                        <div className="flex flex-wrap items-center gap-2">
+                                          <h5 className="text-xs font-bold text-text-bright">
+                                            Patient: {req.patientName}
+                                          </h5>
+                                          <span className="text-[9px] font-mono font-bold bg-rose-500/20 text-rose-300 border border-rose-500/30 px-1.5 py-0.2 rounded uppercase">
+                                            {req.urgencyLevel}
+                                          </span>
+                                          {isAcceptedByMe && (
+                                            <span className="text-[9px] font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 px-1.5 py-0.2 rounded">
+                                              ✓ Accepted By You
+                                            </span>
+                                          )}
+                                        </div>
+
+                                        <p className="text-[11px] text-text-muted font-mono">
+                                          {req.hospitalName}, {req.city} • <span className="text-emerald-400 font-bold">{distance.toFixed(1)} km away</span>
+                                        </p>
+                                      </div>
+                                    </div>
+
+                                    {/* Action button */}
+                                    <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
+                                      <button
+                                        type="button"
+                                        id={`suitable-share-sos-btn-${req.requestId}`}
+                                        onClick={() => setSharingEmergency(req)}
+                                        className="bg-surface-dark border border-amber-500/30 hover:border-amber-400 hover:bg-amber-500/10 text-amber-300 font-bold text-xs px-3 py-2 rounded-xl flex items-center gap-1.5 transition cursor-pointer"
+                                        title="Share SOS Alert via pre-filled social media link"
+                                      >
+                                        <Share2 className="w-3.5 h-3.5 text-amber-400" />
+                                        <span className="hidden sm:inline">Share SOS Alert</span>
+                                        <span className="sm:hidden">Share</span>
+                                      </button>
+                                      {isAcceptedByMe ? (
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            const chatId = `${myProfile.uid}_${req.createdBy}_${req.requestId}`;
+                                            setActiveChatId(chatId);
+                                            setActiveTab("chats");
+                                          }}
+                                          className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs px-3.5 py-2 rounded-xl flex items-center gap-1.5 shadow-lg shadow-emerald-600/20 transition cursor-pointer"
+                                        >
+                                          <MessageSquare className="w-3.5 h-3.5" />
+                                          <span>Open Coordinator Chat</span>
+                                        </button>
+                                      ) : (
+                                        <button
+                                          type="button"
+                                          id={`profile-accept-requisition-btn-${req.requestId}`}
+                                          onClick={() => handleDonorAcceptRequisition(req)}
+                                          className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs px-4 py-2 rounded-xl flex items-center gap-1.5 shadow-lg shadow-emerald-600/25 transition cursor-pointer active:scale-95"
+                                        >
+                                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-200" />
+                                          <span>Accept Requisition</span>
+                                        </button>
+                                      )}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          );
+                        })()}
                       </div>
 
                       {/* Remove my profile - Only Admin can deregister */}
@@ -3505,6 +3814,15 @@ export default function App() {
               </div>
             )}
 
+            {/* ADMIN SMART DONOR MATCHING & DISPATCH REVIEW CONSOLE */}
+            <AdminSmartMatchingReview
+              emergencies={emergencies}
+              donors={donors}
+              onOpenMatchingModal={(req) => setSelectedRequestForSmartMatching(req)}
+              onOpenSmsModal={(d, req) => handleOpenSmsModal(d, req)}
+              onOpenPassModal={(d) => setSelectedPassDonor(d)}
+            />
+
             {/* ADMIN PASS VERIFICATION & QR CHECK-IN STATION */}
             <div
               id="admin-qr-checkin-station"
@@ -3546,10 +3864,15 @@ export default function App() {
                 <div
                   id="admin-tile-optical-camera"
                   onClick={() => setShowAdminQrScanner(true)}
-                  className="bg-surface-dark/90 hover:bg-zinc-800/80 border border-border-dark hover:border-amber-500/40 p-4 rounded-xl cursor-pointer transition space-y-2 group"
+                  className="bg-surface-dark/90 hover:bg-zinc-800/90 border border-amber-500/30 hover:border-amber-500/60 p-4 rounded-xl cursor-pointer transition-all duration-200 ease-out hover:scale-[1.025] hover:shadow-[inset_0_0_18px_rgba(245,158,11,0.18)] hover:shadow-lg hover:shadow-amber-500/10 space-y-2 group relative overflow-hidden"
                 >
-                  <div className="w-8 h-8 rounded-lg bg-amber-500/15 text-amber-400 flex items-center justify-center group-hover:scale-105 transition">
-                    <Camera className="w-4 h-4" />
+                  <div className="flex items-center justify-between">
+                    <div className="w-8 h-8 rounded-lg bg-amber-500/15 text-amber-400 flex items-center justify-center group-hover:scale-110 transition-transform duration-200">
+                      <Camera className="w-4 h-4" />
+                    </div>
+                    <span className="text-[9.5px] font-bold font-mono px-1.5 py-0.5 rounded-md bg-amber-500/15 text-amber-400 border border-amber-500/30 uppercase tracking-wider">
+                      Primary
+                    </span>
                   </div>
                   <h5 className="text-xs font-bold text-text-bright group-hover:text-amber-400 transition">
                     Optical Camera Scan
@@ -3614,7 +3937,7 @@ export default function App() {
                   </thead>
                   <tbody>
                     <AnimatePresence>
-                      {donors.map((d) => (
+                      {(donors || []).map((d) => (
                       <motion.tr layout initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, x: -100, scaleY: 0.5, transition: { duration: 0.3 } }} key={d.uid} id={`admin-donor-row-${d.uid}`} className="border-b border-border-dark/30 text-text-bright hover:bg-surface-dark/40">
                         <td className="py-2.5 px-3 font-semibold">{d.fullName}</td>
                         <td className="py-2.5 px-3 font-bold font-display text-brand-red">{d.bloodGroup}</td>
@@ -3625,19 +3948,19 @@ export default function App() {
                             {d.isAvailable ? "Online" : "Offline"}
                           </span>
                         </td>
-                        <td className="text-right py-2.5 px-3">
-                          <button
-                            id={`admin-ban-donor-${d.uid}`}
-                            onClick={async () => {
-                              if (confirm("Ban and remove this donor profile?")) {
+                          <td className="text-right py-2.5 px-3">
+                            <button
+                              type="button"
+                              id={`admin-ban-donor-${d.uid}`}
+                              onClick={async () => {
+                                setDonors((prev) => prev.filter((item) => item.uid !== d.uid));
                                 await store.deleteDonor(d.uid);
-                              }
-                            }}
-                            className="text-[10px] font-bold text-red-500 hover:text-red-400 cursor-pointer p-1"
-                          >
-                            Remove Card
-                          </button>
-                        </td>
+                              }}
+                              className="text-[10px] font-bold text-red-500 hover:text-red-400 cursor-pointer p-1"
+                            >
+                              Remove Card
+                            </button>
+                          </td>
                       </motion.tr>
                     ))}
                     </AnimatePresence>
@@ -3660,6 +3983,13 @@ export default function App() {
                     Super Admin Access
                   </span>
                 </div>
+
+                {adminUserActionMsg && (
+                  <div className="bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs px-3 py-2 rounded-xl flex items-center gap-2 animate-in fade-in duration-200">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                    <span className="truncate">{adminUserActionMsg}</span>
+                  </div>
+                )}
 
                 <div className="max-h-[260px] overflow-y-auto">
                   <table className="w-full text-xs text-left">
@@ -3696,15 +4026,24 @@ export default function App() {
                                 <span className="text-[9px] text-text-subtle font-mono italic">Self</span>
                               ) : (
                                 <button
+                                  type="button"
                                   id={`admin-delete-user-${u.uid}`}
-                                  onClick={async () => {
-                                    if (confirm(`Are you sure you want to permanently remove registered user account "${u.fullName}" (${u.email})?`)) {
-                                      await store.deleteUser(u.uid);
-                                    }
-                                  }}
-                                  className="text-red-500 hover:text-text-bright bg-red-500/10 hover:bg-red-600 border border-red-500/30 px-2 py-0.5 rounded text-[10px] font-bold transition cursor-pointer"
+                                  disabled={deletingUserUid === u.uid}
+                                  onClick={() => handleAdminDeleteUser(u)}
+                                  className="text-red-400 hover:text-white bg-red-500/10 hover:bg-red-600 border border-red-500/30 hover:border-red-500 px-2.5 py-1 rounded text-[10px] font-bold transition duration-150 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-1 active:scale-95 shadow-sm"
+                                  title={`Permanently remove ${u.fullName}'s account`}
                                 >
-                                  Remove
+                                  {deletingUserUid === u.uid ? (
+                                    <>
+                                      <Loader2 className="w-3 h-3 animate-spin text-red-300" />
+                                      <span>Removing...</span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Trash2 className="w-3 h-3" />
+                                      <span>Remove</span>
+                                    </>
+                                  )}
                                 </button>
                               )}
                             </td>
@@ -4088,8 +4427,31 @@ export default function App() {
           onOpenChatWithDonor={(donorUid, reqId) => {
             const chat = store.getOrCreateChat(donorUid, reqId);
             setActiveChatId(chat.chatId);
-            setActiveTab("messages");
+            setActiveTab("chats");
           }}
+        />
+      )}
+
+      {/* Direct Donor SMS Modal for Individual Mobile Messaging */}
+      {smsModalDonor && (
+        <DirectDonorSmsModal
+          donor={smsModalDonor}
+          emergency={smsModalEmergency}
+          isOpen={smsModalOpen}
+          onClose={() => {
+            setSmsModalOpen(false);
+            setSmsModalDonor(null);
+            setSmsModalEmergency(null);
+          }}
+        />
+      )}
+
+      {/* Share SOS Alert Modal with Pre-filled Social Media Links */}
+      {sharingEmergency && (
+        <ShareSosAlertModal
+          isOpen={!!sharingEmergency}
+          request={sharingEmergency}
+          onClose={() => setSharingEmergency(null)}
         />
       )}
 

@@ -75,6 +75,25 @@
         "timestamp": { "type": "string", "format": "date-time" }
       },
       "required": ["id", "action", "details", "adminId", "adminEmail", "timestamp"]
+    },
+    "SmsLogEntry": {
+      "title": "SmsLogEntry",
+      "description": "Represents an SMS dispatch record logged in real-time when notifications are sent to donors.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "donorUid": { "type": "string" },
+        "donorName": { "type": "string" },
+        "donorPhone": { "type": "string" },
+        "message": { "type": "string" },
+        "templateType": { "type": "string" },
+        "requestId": { "type": "string" },
+        "status": { "type": "string", "enum": ["Delivered", "Sent", "Failed"] },
+        "carrier": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "referenceId": { "type": "string" }
+      },
+      "required": ["id", "donorPhone", "message", "status", "timestamp", "referenceId"]
     }
   },
   "firestore": {
@@ -93,6 +112,10 @@
     "/admin_logs/{logId}": {
       "schema": { "$ref": "#/entities/AdminAuditLog" },
       "description": "Immutable administrative action audit trail recording actions like Donor Removed and SOS Fulfilled."
+    },
+    "/sms_logs/{smsId}": {
+      "schema": { "$ref": "#/entities/SmsLogEntry" },
+      "description": "Cellular SMS delivery logs and carrier audit verification records."
     }
   }
 }
