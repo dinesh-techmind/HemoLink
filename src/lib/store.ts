@@ -3,9 +3,109 @@ import { db, auth, handleFirestoreError, OperationType } from "./firebase";
 import { collection, onSnapshot, doc, setDoc, deleteDoc, getDocs } from "firebase/firestore";
 import { onAuthStateChanged, signInAnonymously } from "firebase/auth";
 import { getMilestoneTier } from "./milestones";
+import { arePhonesEqual } from "./phoneAuth";
 
-// Pre-seeded audit logs for admin accountability verification
+// Pre-seeded audit logs for admin accountability verification (sorted chronologically)
 const SEED_ADMIN_LOGS: AdminAuditLog[] = [
+  {
+    id: "log_act_checkin_1",
+    action: "Donation Check-In Logged",
+    details: "Verified donation of 1 unit Whole Blood for Rajesh Kumar (O+) at Rajiv Gandhi Government General Hospital Blood Bank, Chennai. Reset WHO 56-day cooldown timer.",
+    targetId: "donor_1",
+    adminId: "admin_super",
+    adminEmail: "srini16dinesh@gmail.com",
+    timestamp: "2026-09-19T05:45:00.000Z"
+  },
+  {
+    id: "log_act_reg_1",
+    action: "Donor Registered",
+    details: "New donor profile registered: 'Dr. Ananya Sundaram' (AB+) in Coimbatore, Tamil Nadu. Mobile verification cleared.",
+    targetId: "donor_reg_1",
+    adminId: "admin_super",
+    adminEmail: "srini16dinesh@gmail.com",
+    timestamp: "2026-09-19T04:15:00.000Z"
+  },
+  {
+    id: "log_act_checkin_2",
+    action: "Donation Check-In Logged",
+    details: "On-site clinic check-in completed for Priya Sharma (A+) at Apollo Hospital Blood Centre, Greams Road. Apheresis Platelets donation verified (+15 saved units).",
+    targetId: "donor_2",
+    adminId: "admin_super",
+    adminEmail: "srini16dinesh@gmail.com",
+    timestamp: "2026-09-19T03:20:00.000Z"
+  },
+  {
+    id: "log_act_rem_1",
+    action: "User Removed",
+    details: "Permanently removed registered user account 'test.spammer99@junkmail.com' by Super Admin moderation override.",
+    targetId: "user_spam_1",
+    adminId: "admin_super",
+    adminEmail: "srini16dinesh@gmail.com",
+    timestamp: "2026-09-18T21:05:00.000Z"
+  },
+  {
+    id: "log_act_reg_2",
+    action: "Donor Registered",
+    details: "New donor profile registered: 'Manoj Venkatesh' (O-) in Madurai, Tamil Nadu. Active emergency volunteer tier granted.",
+    targetId: "donor_reg_2",
+    adminId: "admin_super",
+    adminEmail: "srini16dinesh@gmail.com",
+    timestamp: "2026-09-18T18:40:00.000Z"
+  },
+  {
+    id: "log_act_checkin_3",
+    action: "Donation Check-In Logged",
+    details: "Mobile QR pass check-in scanned and clinical donation approved for Arunachalam S. (B+) at Stanley Medical College Blood Bank. Added +10 saved units.",
+    targetId: "donor_4",
+    adminId: "admin_super",
+    adminEmail: "srini16dinesh@gmail.com",
+    timestamp: "2026-09-18T16:10:00.000Z"
+  },
+  {
+    id: "log_act_reg_3",
+    action: "User Registered",
+    details: "New user account registered: 'Divya Balaji' (divya.b@outlook.com) with role: user.",
+    targetId: "user_reg_1",
+    adminId: "admin_super",
+    adminEmail: "srini16dinesh@gmail.com",
+    timestamp: "2026-09-18T12:15:00.000Z"
+  },
+  {
+    id: "log_act_checkin_4",
+    action: "Donation Check-In Logged",
+    details: "Hospital check-in recorded for Meenakshi Sundaram (O+) at Coimbatore Medical College Hospital. Cleared for whole blood donation.",
+    targetId: "donor_6",
+    adminId: "admin_super",
+    adminEmail: "srini16dinesh@gmail.com",
+    timestamp: "2026-09-18T10:30:00.000Z"
+  },
+  {
+    id: "log_act_rem_2",
+    action: "Donor Profile Deregistered",
+    details: "Donor profile voluntarily deregistered and removed for 'Vijay Anand' (A-, Chennai) upon donor request.",
+    targetId: "donor_rem_2",
+    adminId: "admin_super",
+    adminEmail: "srini16dinesh@gmail.com",
+    timestamp: "2026-09-17T17:30:00.000Z"
+  },
+  {
+    id: "log_act_reg_4",
+    action: "Donor Registered",
+    details: "User registered as active donor: 'Kavitha Ramachandran' (A+) in Salem, Tamil Nadu.",
+    targetId: "donor_reg_4",
+    adminId: "admin_super",
+    adminEmail: "srini16dinesh@gmail.com",
+    timestamp: "2026-09-17T14:20:00.000Z"
+  },
+  {
+    id: "log_act_rem_3",
+    action: "Donor Removed",
+    details: "Removed inactive donor profile 'K. Suresh' (B+) following clinical health ineligibility review.",
+    targetId: "donor_rem_3",
+    adminId: "admin_super",
+    adminEmail: "srini16dinesh@gmail.com",
+    timestamp: "2026-09-16T15:45:00.000Z"
+  },
   {
     id: "log_init_1",
     action: "System Initialized",
@@ -13,15 +113,6 @@ const SEED_ADMIN_LOGS: AdminAuditLog[] = [
     adminId: "admin_super",
     adminEmail: "srini16dinesh@gmail.com",
     timestamp: "2026-06-01T09:00:00.000Z"
-  },
-  {
-    id: "log_init_2",
-    action: "SOS Fulfilled",
-    details: "Fulfilled emergency SOS request for patient 'Pooja Iyer' (A+, 2 units at Apollo Main, Chennai).",
-    targetId: "req_demo_completed",
-    adminId: "admin_super",
-    adminEmail: "srini16dinesh@gmail.com",
-    timestamp: "2026-06-02T14:30:00.000Z"
   }
 ];
 
@@ -570,20 +661,22 @@ const SEED_MESSAGES: { [chatId: string]: Message[] } = {
   ]
 };
 
-// Initial logged-in users list
+// Initial logged-in users list (stored in backend database)
 const SEED_USERS: AppUser[] = [
   {
-    uid: "user_seeker_1",
-    email: "sandeep@hospital.org",
-    fullName: "Dr. Sandeep Krishnan",
-    role: "user",
-    requestsToday: 1,
-    createdAt: "2026-01-10T12:00:00Z"
+    uid: "admin_super",
+    email: "srini16dinesh@gmail.com",
+    fullName: "S.S. Dinesh",
+    phone: "+91 94432 10987",
+    role: "admin",
+    requestsToday: 0,
+    createdAt: "2026-01-01T00:00:00Z"
   },
   {
     uid: "donor_rahul_1",
     email: "rahul.varma@gmail.com",
     fullName: "Rahul Varma",
+    phone: "+91 98450 12345",
     role: "user",
     requestsToday: 0,
     createdAt: "2025-10-10T12:00:00Z"
@@ -592,17 +685,73 @@ const SEED_USERS: AppUser[] = [
     uid: "donor_priya_2",
     email: "priya.sharma@yahoo.com",
     fullName: "Priya Sharma",
+    phone: "+91 81220 98765",
     role: "user",
     requestsToday: 0,
     createdAt: "2025-11-12T09:30:00Z"
   },
   {
-    uid: "admin_super",
-    email: "srini16dinesh@gmail.com", // Matches the email from metadata! Beautiful bootstrap!
-    fullName: "Super Admin (Srini)",
-    role: "admin",
+    uid: "donor_arjun_3",
+    email: "arjun.reddy@gmail.com",
+    fullName: "Arjun Reddy",
+    phone: "+91 97890 54321",
+    role: "user",
     requestsToday: 0,
-    createdAt: "2026-01-01T00:00:00Z"
+    createdAt: "2025-12-01T09:30:00Z"
+  },
+  {
+    uid: "donor_sneha_4",
+    email: "sneha.k@gmail.com",
+    fullName: "Sneha Kapoor",
+    phone: "+91 90030 67890",
+    role: "user",
+    requestsToday: 0,
+    createdAt: "2025-12-15T11:00:00Z"
+  },
+  {
+    uid: "donor_mohammed_5",
+    email: "faiz.m@outlook.com",
+    fullName: "Mohammed Faiz",
+    phone: "+91 99401 23456",
+    role: "user",
+    requestsToday: 0,
+    createdAt: "2026-01-05T08:15:00Z"
+  },
+  {
+    uid: "donor_ananya_6",
+    email: "ananya.sundaram@aims.edu",
+    fullName: "Dr. Ananya Sundaram",
+    phone: "+91 94444 88776",
+    role: "user",
+    requestsToday: 0,
+    createdAt: "2026-01-10T14:20:00Z"
+  },
+  {
+    uid: "donor_kavitha_7",
+    email: "kavitha.r@tcs.com",
+    fullName: "Kavitha Ramachandran",
+    phone: "+91 98840 99887",
+    role: "user",
+    requestsToday: 0,
+    createdAt: "2026-01-15T10:00:00Z"
+  },
+  {
+    uid: "donor_vijay_8",
+    email: "vijay.anand@zoho.com",
+    fullName: "Vijay Anand",
+    phone: "+91 91760 11223",
+    role: "user",
+    requestsToday: 0,
+    createdAt: "2026-02-01T09:00:00Z"
+  },
+  {
+    uid: "user_seeker_1",
+    email: "sandeep@hospital.org",
+    fullName: "Dr. Sandeep Krishnan",
+    phone: "+91 98400 11223",
+    role: "user",
+    requestsToday: 1,
+    createdAt: "2026-01-10T12:00:00Z"
   }
 ];
 
@@ -765,6 +914,32 @@ export class AppStore {
         }
       });
 
+      // Continuous observer on registered users collection in Firestore
+      onSnapshot(collection(db, "users"), (snapshot) => {
+        const list: AppUser[] = [];
+        snapshot.forEach((doc) => {
+          list.push({ uid: doc.id, ...doc.data() } as AppUser);
+        });
+        if (snapshot.size > 0) {
+          for (const u of list) {
+            const idx = this.users.findIndex((existing) => existing.uid === u.uid || (u.phone && existing.phone && arePhonesEqual(u.phone, existing.phone)));
+            if (idx >= 0) {
+              this.users[idx] = { ...this.users[idx], ...u };
+            } else {
+              this.users.push(u);
+            }
+          }
+          this.saveToStorage();
+          this.notify();
+        }
+      }, (error) => {
+        try {
+          handleFirestoreError(error, OperationType.LIST, "users");
+        } catch {
+          // Graceful silent fallback
+        }
+      });
+
       // Run on-startup seed checklist
       this.seedFirestoreIfNeeded();
 
@@ -781,6 +956,14 @@ export class AppStore {
         console.log("Database Bootstrap: Preloading volunteers schema inside cloud firestore...");
         for (const donor of SEED_DONORS) {
           await setDoc(doc(db, "donors", donor.uid), donor);
+        }
+      }
+
+      const usersSnap = await getDocs(collection(db, "users"));
+      if (usersSnap.empty) {
+        console.log("Database Bootstrap: Syncing registered users schema inside cloud firestore...");
+        for (const user of SEED_USERS) {
+          await setDoc(doc(db, "users", user.uid), user);
         }
       }
 
@@ -859,7 +1042,31 @@ export class AppStore {
       this.emergencies = storedEmergencies ? JSON.parse(storedEmergencies) : SEED_REQUESTS;
       this.chats = storedChats ? JSON.parse(storedChats) : SEED_CHATS;
       this.messages = storedMessages ? JSON.parse(storedMessages) : SEED_MESSAGES;
-      this.users = storedUsers ? JSON.parse(storedUsers) : SEED_USERS;
+      this.users = storedUsers ? JSON.parse(storedUsers) : [...SEED_USERS];
+      // Ensure seed users and phone numbers are seamlessly synchronized
+      if (Array.isArray(this.users)) {
+        const existingUids = new Set(this.users.map((u: AppUser) => u?.uid).filter(Boolean));
+        const missingUsers = SEED_USERS.filter((u) => !existingUids.has(u.uid));
+        this.users = [...this.users, ...missingUsers];
+
+        for (const u of this.users) {
+          if (!u.phone) {
+            const donorMatch = this.donors.find(
+              (d) => d.uid === u.uid || (u.email && d.email && d.email.toLowerCase() === u.email.toLowerCase())
+            );
+            if (donorMatch?.phone) {
+              u.phone = donorMatch.phone;
+            } else {
+              const seedMatch = SEED_USERS.find((su) => su.uid === u.uid);
+              if (seedMatch?.phone) {
+                u.phone = seedMatch.phone;
+              }
+            }
+          }
+        }
+      } else {
+        this.users = [...SEED_USERS];
+      }
       // Restore active authenticated session if present in localStorage
       if (storedCurrentUser) {
         try {
@@ -871,7 +1078,17 @@ export class AppStore {
         this.currentUser = null;
       }
       this.notifications = storedNotifications ? JSON.parse(storedNotifications) : [];
-      this.adminLogs = storedAdminLogs ? JSON.parse(storedAdminLogs) : SEED_ADMIN_LOGS;
+      let parsedLogs: AdminAuditLog[] = storedAdminLogs ? JSON.parse(storedAdminLogs) : [];
+      if (parsedLogs.length < SEED_ADMIN_LOGS.length) {
+        const existingIds = new Set(parsedLogs.map((l) => l.id));
+        SEED_ADMIN_LOGS.forEach((seedLog) => {
+          if (!existingIds.has(seedLog.id)) {
+            parsedLogs.push(seedLog);
+          }
+        });
+      }
+      parsedLogs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+      this.adminLogs = parsedLogs;
       this.smsLogs = storedSmsLogs ? JSON.parse(storedSmsLogs) : [];
       if (storedGPS) {
         this.userGPS = JSON.parse(storedGPS);
@@ -974,6 +1191,11 @@ export class AppStore {
     this.currentUser = newUser;
     this.saveToStorage();
     this.notify();
+    this.logAdminAction(
+      "User Registered",
+      `New user account registered: '${newUser.fullName}' (${newUser.email}) with role: ${newUser.role}.`,
+      newUser.uid
+    );
     return newUser;
   }
 
@@ -985,7 +1207,7 @@ export class AppStore {
     role: UserRole = "user"
   ): AppUser {
     let existing = this.users.find(
-      (u) => u.uid === uid || (u.phone && phone && u.phone === phone)
+      (u) => u.uid === uid || (u.phone && phone && arePhonesEqual(u.phone, phone))
     );
     if (existing) {
       if (fullName) existing.fullName = fullName;
@@ -1017,7 +1239,119 @@ export class AppStore {
     this.syncToFirestore("users", newUser.uid, newUser);
     this.saveToStorage();
     this.notify();
+    this.logAdminAction(
+      "User Registered",
+      `Mobile user registered: '${newUser.fullName}' (${newUser.phone || newUser.email}) with role: ${newUser.role}.`,
+      newUser.uid
+    );
     return newUser;
+  }
+
+  /**
+   * Synchronously inspects local store state (donors and registered users)
+   * to check if a phone number already exists in the backend store.
+   */
+  public isPhoneRegistered(phoneNumber: string): {
+    isRegistered: boolean;
+    user?: AppUser;
+    donor?: Donor;
+    name?: string;
+    role?: UserRole;
+  } {
+    if (!phoneNumber) return { isRegistered: false };
+
+    // 1. Check registered donors list
+    const foundDonor = this.donors.find((d) => arePhonesEqual(d.phone, phoneNumber));
+    if (foundDonor) {
+      const matchedUser = this.users.find(
+        (u) => u.uid === foundDonor.uid || arePhonesEqual(u.phone, phoneNumber)
+      );
+      return {
+        isRegistered: true,
+        donor: foundDonor,
+        user: matchedUser,
+        name: foundDonor.fullName,
+        role: matchedUser?.role || "user",
+      };
+    }
+
+    // 2. Check registered users list
+    const foundUser = this.users.find((u) => arePhonesEqual(u.phone, phoneNumber));
+    if (foundUser) {
+      return {
+        isRegistered: true,
+        user: foundUser,
+        name: foundUser.fullName,
+        role: foundUser.role,
+      };
+    }
+
+    return { isRegistered: false };
+  }
+
+  /**
+   * Asynchronously checks backend database (both local cache and Firestore collections)
+   * to verify whether a mobile number is already registered or not.
+   */
+  public async checkPhoneInBackend(phoneNumber: string): Promise<{
+    isRegistered: boolean;
+    user?: AppUser;
+    donor?: Donor;
+    name?: string;
+    role?: UserRole;
+  }> {
+    if (!phoneNumber) return { isRegistered: false };
+
+    // 1. First test synchronous local store state
+    const localCheck = this.isPhoneRegistered(phoneNumber);
+    if (localCheck.isRegistered) {
+      return localCheck;
+    }
+
+    // 2. Query Firestore collections directly
+    try {
+      // Check donors collection in Firestore
+      const donorsSnap = await getDocs(collection(db, "donors"));
+      for (const dDoc of donorsSnap.docs) {
+        const dData = dDoc.data() as Donor;
+        if (arePhonesEqual(dData.phone, phoneNumber)) {
+          if (!this.donors.some((d) => d.uid === dData.uid)) {
+            this.donors.push(dData);
+            this.saveToStorage();
+            this.notify();
+          }
+          return {
+            isRegistered: true,
+            donor: dData,
+            name: dData.fullName,
+            role: "user",
+          };
+        }
+      }
+
+      // Check users collection in Firestore
+      const usersSnap = await getDocs(collection(db, "users"));
+      for (const uDoc of usersSnap.docs) {
+        const uData = uDoc.data() as AppUser;
+        if (arePhonesEqual(uData.phone, phoneNumber)) {
+          if (!this.users.some((u) => u.uid === uData.uid)) {
+            this.users.push(uData);
+            this.saveToStorage();
+            this.notify();
+          }
+          return {
+            isRegistered: true,
+            user: uData,
+            name: uData.fullName,
+            role: uData.role,
+          };
+        }
+      }
+    } catch (err) {
+      console.warn("Backend phone registration lookup error (fallback to local state):", err);
+    }
+
+    return { isRegistered: false };
   }
 
   public registerGoogleUser(
@@ -1217,6 +1551,12 @@ export class AppStore {
     // Firestore Sync
     this.syncToFirestore("donors", newDonor.uid, newDonor);
 
+    this.logAdminAction(
+      "Donor Registered",
+      `User registered as active donor: '${newDonor.fullName}' (${newDonor.bloodGroup}) in ${newDonor.city}, ${newDonor.state}. Mobile: ${newDonor.phone || "N/A"}.`,
+      newDonor.uid
+    );
+
     return newDonor;
   }
 
@@ -1241,6 +1581,13 @@ export class AppStore {
     this.saveToStorage();
     this.notify();
     this.syncToFirestore("donors", newDonor.uid, newDonor);
+
+    this.logAdminAction(
+      "Donor Registered",
+      `New donor registered: '${newDonor.fullName}' (${newDonor.bloodGroup}) based in ${newDonor.city}, ${newDonor.state}. Mobile: ${newDonor.phone || "N/A"}.`,
+      newDonor.uid
+    );
+
     return newDonor;
   }
 
@@ -1453,12 +1800,25 @@ export class AppStore {
 
     // Firestore Sync
     this.syncToFirestore("donors", profile.uid, profile);
+
+    this.logAdminAction(
+      "Donation Check-In Logged",
+      `On-site QR pass scan check-in completed for '${profile.fullName}' (${profile.bloodGroup}). Added +${unitsToAdd} units (Total: ${profile.donationCount} donations, ${profile.savedUnits} saved units). WHO 56-day cooldown timer restarted.`,
+      profile.uid
+    );
   }
 
   public removeDonorProfile(uid: string) {
+    const target = this.donors.find((d) => d.uid === uid);
     this.donors = this.donors.filter((d) => d.uid !== uid);
     this.saveToStorage();
     this.notify();
+
+    this.logAdminAction(
+      "Donor Profile Deregistered",
+      `Donor profile voluntarily deregistered/removed for '${target?.fullName || uid}' (${target?.bloodGroup || 'Unknown'}, ${target?.city || 'Unknown'})`,
+      uid
+    );
 
     // Firestore Sync delete
     deleteDoc(doc(db, "donors", uid)).catch((e) => console.warn(e));

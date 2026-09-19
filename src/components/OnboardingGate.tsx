@@ -12,6 +12,8 @@ import {
   Mail,
   Info,
   Smartphone,
+  UserPlus,
+  X,
 } from "lucide-react";
 import { auth, db } from "../lib/firebase";
 import { doc, setDoc } from "firebase/firestore";
@@ -30,10 +32,21 @@ import {
   sendFirebasePhoneOtp,
   getFriendlyPhoneAuthError,
   clearRecaptcha,
+  arePhonesEqual,
 } from "../lib/phoneAuth";
 
 const BLOOD_GROUPS: BloodGroup[] = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
 const GENDERS: Gender[] = ["Male", "Female", "Other"];
+
+const BLOOD_DONATION_QUOTES = [
+  "A single pint can save up to three lives; a single gesture can create a million smiles.",
+  "Donate blood and be the reason for someone's heartbeat.",
+  "The blood you donate gives someone another chance at life.",
+  "Heroes come in all types, and today yours can be A, B, AB, or O.",
+  "You don't need a medical degree to save a life — just a willing heart and a pint of blood.",
+  "Tears of a mother cannot save her child, but your blood can.",
+  "Share life, give blood. It is the most precious gift of all."
+];
 
 const GoogleGIcon = ({ className = "w-4 h-4" }: { className?: string }) => (
   <svg className={className} viewBox="0 0 24 24" aria-hidden="true">
@@ -146,6 +159,49 @@ export default function OnboardingGate({
   const [showTermsModal, setShowTermsModal] = useState(false);
   const [showPrivacyModal, setShowPrivacyModal] = useState(false);
   const [location, setLocation] = useState<GeoLocation>({ lat: 11.0168, lng: 76.9558 });
+  const [quoteIndex, setQuoteIndex] = useState<number>(0);
+
+  // Backend mobile registration verification states
+  const [isCheckingDatabase, setIsCheckingDatabase] = useState<boolean>(false);
+  const [showRegisterPromptModal, setShowRegisterPromptModal] = useState<boolean>(false);
+  const [unregisteredPhone, setUnregisteredPhone] = useState<string>("");
+  const [registeredMatchName, setRegisteredMatchName] = useState<string | null>(null);
+  const [registrationPrefillNotice, setRegistrationPrefillNotice] = useState<string | null>(null);
+
+  const cleanE164 = formatToE164(countryCode, phoneNumber);
+
+  // Real-time backend phone registration check as user types
+  const handlePhoneChange = (rawNumber: string, dialCode: string) => {
+    setAuthError("");
+    const formatted = formatToE164(dialCode, rawNumber);
+    const digits = rawNumber.replace(/\D/g, "");
+    if (digits.length >= 10) {
+      const match = store.isPhoneRegistered(formatted);
+      if (match.isRegistered) {
+        setRegisteredMatchName(match.name || "Registered User");
+        if (!signInUserName.trim() && match.name) {
+          setSignInUserName(match.name);
+        }
+      } else {
+        setRegisteredMatchName(null);
+      }
+    } else {
+      setRegisteredMatchName(null);
+    }
+  };
+
+  // Modal action: seamlessly transitions unregistered new user into registration with pre-filled inputs
+  const handleSwitchToRegisterFromModal = () => {
+    setShowRegisterPromptModal(false);
+    setView("register");
+    setAuthError("");
+    if (signInUserName.trim() && !fullName.trim()) {
+      setFullName(signInUserName.trim());
+    }
+    setRegistrationPrefillNotice(
+      `Mobile number ${unregisteredPhone || cleanE164} is ready. Please complete your donor profile details below.`
+    );
+  };
 
   const finishWithLoading = () => {
     setIsLoading(true);
@@ -154,8 +210,6 @@ export default function OnboardingGate({
       onComplete();
     }, 1000);
   };
-
-  const cleanE164 = formatToE164(countryCode, phoneNumber);
 
   // --------------------------------------------------------------------------
   // Continue with Google Authentication
@@ -273,22 +327,53 @@ export default function OnboardingGate({
         setAuthError("You must accept the Terms & Conditions and Privacy Policy to register.");
         return;
       }
-    } else {
-      // Sign-in mode
-      if (!signInUserName.trim()) {
-        setAuthError("Please enter your user name.");
+
+      // Check if this mobile number is already registered in backend database
+      const checkExisting = store.isPhoneRegistered(cleanE164);
+      if (checkExisting.isRegistered) {
+        setAuthError(
+          `This mobile number is already registered to ${checkExisting.name || "an existing profile"}. Please switch to the Sign In tab to access your account.`
+        );
         return;
       }
-
+    } else {
+      // Sign-in mode: Old users only. Validate registered status in backend database
       if (!phoneNumber.trim()) {
-        setAuthError("Please enter your mobile phone number.");
+        setAuthError("Please enter your registered mobile phone number.");
         return;
       }
 
       if (!isValidE164(cleanE164)) {
-        setAuthError("Please enter a valid phone number with standard digits (e.g. 9876543210).");
+        setAuthError("Please enter a valid phone number with standard digits (e.g. 98765 43210).");
         return;
       }
+
+      // Check in backend database whether mobile number is already registered or not
+      setIsCheckingDatabase(true);
+      setAuthError("");
+      let dbCheck;
+      try {
+        dbCheck = await store.checkPhoneInBackend(cleanE164);
+      } catch (checkErr) {
+        console.warn("Backend phone registration check error:", checkErr);
+        dbCheck = store.isPhoneRegistered(cleanE164);
+      } finally {
+        setIsCheckingDatabase(false);
+      }
+
+      if (!dbCheck.isRegistered) {
+        // Mobile number is NOT registered in backend database!
+        // Show pop up modal asking user to register their new profile or account
+        setUnregisteredPhone(cleanE164);
+        setShowRegisterPromptModal(true);
+        return;
+      }
+
+      // If registered and user did not enter a user name, prefill from database
+      if (dbCheck.name && !signInUserName.trim()) {
+        setSignInUserName(dbCheck.name);
+      }
+      setRegisteredMatchName(dbCheck.name || null);
     }
 
     setIsSendingOtp(true);
@@ -390,12 +475,12 @@ export default function OnboardingGate({
         return;
       }
 
-      // Resolve existing donor or user record
+      // Resolve existing donor or user record in backend database
       const existingDonor = store.getDonors().find(
-        (d) => d.uid === uid || d.phone === phoneE164
+        (d) => d.uid === uid || arePhonesEqual(d.phone, phoneE164)
       );
       const existingUser = store.getAllUsers().find(
-        (u) => u.uid === uid || (u.phone && phoneE164 && u.phone === phoneE164)
+        (u) => u.uid === uid || (u.phone && arePhonesEqual(u.phone, phoneE164))
       );
 
       const resolvedName =
@@ -878,9 +963,22 @@ export default function OnboardingGate({
               </p>
             </div>
           </div>
-          <p className="text-[10px] text-gray-500 font-medium">
-            Passwordless Mobile OTP & Google Authentication
-          </p>
+          {/* Blood Donation Motivational Quote */}
+          <div className="mt-3 bg-red-50/70 border border-red-100/90 rounded-xl px-3.5 py-2 text-left flex items-start gap-2.5 shadow-sm">
+            <span className="text-base text-[#9B1B28] leading-none shrink-0 select-none font-serif">“</span>
+            <p className="text-[11px] text-[#750000] italic leading-snug font-medium flex-1">
+              {BLOOD_DONATION_QUOTES[quoteIndex]}
+            </p>
+            <button
+              type="button"
+              onClick={() => setQuoteIndex((prev) => (prev + 1) % BLOOD_DONATION_QUOTES.length)}
+              className="text-[#9B1B28]/60 hover:text-[#9B1B28] p-0.5 rounded transition-colors shrink-0"
+              title="Next quote"
+              aria-label="Next quote"
+            >
+              <RefreshCw className="w-3 h-3" />
+            </button>
+          </div>
         </div>
 
         {/* Tab switch between Login and Register */}
@@ -961,6 +1059,22 @@ export default function OnboardingGate({
         {view === "register" ? (
           /* New Donor Registration Page */
           <form onSubmit={handleSendOtp} className="space-y-3.5">
+            {registrationPrefillNotice && (
+              <div className="flex items-center justify-between text-xs text-blue-800 bg-blue-50 border border-blue-200 rounded-xl p-3 font-medium animate-in fade-in duration-200">
+                <div className="flex items-center gap-2">
+                  <Info className="w-4 h-4 text-blue-600 shrink-0" />
+                  <span>{registrationPrefillNotice}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setRegistrationPrefillNotice(null)}
+                  className="text-blue-500 hover:text-blue-700 font-bold p-0.5"
+                  aria-label="Dismiss notice"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
             {/* Full Name */}
             <div className="space-y-1">
               <label className="text-xs font-bold text-gray-800 ml-1">Full Name</label>
@@ -1123,8 +1237,11 @@ export default function OnboardingGate({
           <form onSubmit={handleSendOtp} className="space-y-3.5">
             {/* User Name */}
             <div className="space-y-1">
-              <label className="text-xs font-bold text-gray-800 ml-1">
-                User Name
+              <label className="text-xs font-bold text-gray-800 ml-1 flex items-center justify-between">
+                <span>User Name</span>
+                <span className="text-[10px] text-gray-400 font-normal">
+                  {registeredMatchName ? "Verified from database" : "Optional if registered"}
+                </span>
               </label>
               <div className="flex items-center gap-3 border border-gray-200 rounded-xl px-4 py-2.5 bg-white focus-within:border-[#ba1111] focus-within:ring-1 focus-within:ring-[#ba1111] transition-all">
                 <User className="w-4 h-4 text-gray-400 shrink-0" />
@@ -1133,8 +1250,6 @@ export default function OnboardingGate({
                   placeholder="e.g. virat or Virat Kohli"
                   value={signInUserName}
                   onChange={(e) => setSignInUserName(e.target.value)}
-                  required
-                  autoFocus
                   className="w-full text-sm outline-none text-gray-900 placeholder:text-gray-400 bg-transparent font-medium"
                 />
               </div>
@@ -1142,14 +1257,18 @@ export default function OnboardingGate({
 
             {/* Mobile Phone Number */}
             <div className="space-y-1">
-              <label className="text-xs font-bold text-gray-800 ml-1">
-                Mobile Phone Number
+              <label className="text-xs font-bold text-gray-800 ml-1 flex items-center justify-between">
+                <span>Registered Mobile Phone</span>
+                <span className="text-[10px] text-[#ba1111] font-semibold">Existing Members Only</span>
               </label>
               <div className="flex gap-2">
                 {/* Country Code Picker */}
                 <select
                   value={countryCode}
-                  onChange={(e) => setCountryCode(e.target.value)}
+                  onChange={(e) => {
+                    setCountryCode(e.target.value);
+                    handlePhoneChange(phoneNumber, e.target.value);
+                  }}
                   className="bg-gray-50 border border-gray-200 rounded-xl px-2.5 py-2.5 text-xs font-bold text-gray-800 outline-none focus:border-[#ba1111] transition-all cursor-pointer"
                 >
                   {SUPPORTED_COUNTRIES.map((c) => (
@@ -1164,17 +1283,56 @@ export default function OnboardingGate({
                   <Phone className="w-4 h-4 text-gray-400 shrink-0" />
                   <input
                     type="tel"
+                    id="signin-mobile-phone-input"
                     placeholder="98765 43210"
                     value={phoneNumber}
-                    onChange={(e) => setPhoneNumber(e.target.value)}
+                    onChange={(e) => {
+                      setPhoneNumber(e.target.value);
+                      handlePhoneChange(e.target.value, countryCode);
+                    }}
+                    onBlur={() => {
+                      if (phoneNumber.replace(/\D/g, "").length >= 10 && !registeredMatchName) {
+                        const quick = store.isPhoneRegistered(cleanE164);
+                        if (!quick.isRegistered) {
+                          setUnregisteredPhone(cleanE164);
+                          setShowRegisterPromptModal(true);
+                        }
+                      }
+                    }}
                     required
                     className="w-full text-sm outline-none text-gray-900 placeholder:text-gray-400 bg-transparent font-medium"
                   />
                 </div>
               </div>
-              <p className="text-[10px] text-gray-400 ml-1">
-                Standard SMS rates may apply. Never share your OTP.
-              </p>
+
+              {/* Real-time database match status */}
+              {registeredMatchName ? (
+                <div className="flex items-center gap-1.5 text-[11px] text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg px-2.5 py-1.5 mt-1 font-medium animate-in fade-in duration-150">
+                  <CheckCircle className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                  <span>Registered account: <strong>{registeredMatchName}</strong> (Ready to Sign In)</span>
+                </div>
+              ) : phoneNumber.replace(/\D/g, "").length >= 10 ? (
+                <div className="flex items-center justify-between gap-2 text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5 mt-1 animate-in fade-in duration-150">
+                  <span className="flex items-center gap-1">
+                    <Info className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                    Number not registered in database.
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setUnregisteredPhone(cleanE164);
+                      setShowRegisterPromptModal(true);
+                    }}
+                    className="text-[#ba1111] font-bold hover:underline cursor-pointer"
+                  >
+                    Register Profile →
+                  </button>
+                </div>
+              ) : (
+                <p className="text-[10px] text-gray-400 ml-1">
+                  Database check runs on entry. Unregistered numbers will be prompted to register.
+                </p>
+              )}
             </div>
 
             {authError && (
@@ -1185,14 +1343,20 @@ export default function OnboardingGate({
 
             <button
               type="submit"
-              disabled={isSendingOtp}
+              id="signin-submit-btn"
+              disabled={isSendingOtp || isCheckingDatabase}
               className={`w-full py-3.5 rounded-xl font-bold flex items-center justify-center gap-2 transition-all shadow-lg text-sm ${
-                isSendingOtp
+                isSendingOtp || isCheckingDatabase
                   ? "bg-gray-400 text-white cursor-not-allowed"
                   : "bg-[#ba1111] hover:bg-[#9a0f0f] text-white shadow-[#ba1111]/20 cursor-pointer"
               }`}
             >
-              {isSendingOtp ? (
+              {isCheckingDatabase ? (
+                <>
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                  <span>Verifying Mobile in Database...</span>
+                </>
+              ) : isSendingOtp ? (
                 <>
                   <RefreshCw className="w-4 h-4 animate-spin" />
                   <span>Sending SMS OTP via Firebase...</span>
@@ -1303,6 +1467,80 @@ export default function OnboardingGate({
             setAuthError("");
           }}
         />
+
+        {/* Unregistered Mobile Number Pop-Up Prompt Modal */}
+        {showRegisterPromptModal && (
+          <div
+            id="unregistered-user-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="unregistered-modal-title"
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200"
+          >
+            <div className="bg-white rounded-3xl max-w-md w-full p-6 sm:p-7 shadow-2xl border border-red-100 text-center relative animate-in zoom-in-95 duration-200">
+              {/* Dismiss button */}
+              <button
+                type="button"
+                id="close-unregistered-modal-btn"
+                onClick={() => setShowRegisterPromptModal(false)}
+                className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 p-1.5 rounded-full hover:bg-gray-100 transition cursor-pointer"
+                aria-label="Close modal"
+              >
+                <X className="w-5 h-5" />
+              </button>
+
+              {/* Icon Graphic */}
+              <div className="w-16 h-16 mx-auto bg-red-50 text-[#ba1111] rounded-2xl flex items-center justify-center mb-4 border border-red-100 shadow-sm">
+                <UserPlus className="w-8 h-8" />
+              </div>
+
+              {/* Badges & Titles */}
+              <span className="inline-block bg-amber-50 text-amber-800 text-[11px] font-bold px-3 py-1 rounded-full border border-amber-200 mb-2.5">
+                Mobile Number Not Registered
+              </span>
+              <h3
+                id="unregistered-modal-title"
+                className="text-xl font-extrabold text-gray-900 mb-2 font-display"
+              >
+                Register Your New Profile
+              </h3>
+
+              {/* Descriptive Explanations */}
+              <p className="text-sm text-gray-600 mb-2 leading-relaxed">
+                The mobile number <span className="font-bold text-gray-900">{unregisteredPhone || cleanE164}</span> was checked against our backend database and is not yet registered.
+              </p>
+              <div className="bg-gray-50 p-3 rounded-2xl border border-gray-100 mb-5 text-left flex items-start gap-2.5">
+                <Info className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                <p className="text-xs text-gray-600 leading-relaxed">
+                  Existing users can sign in immediately. To protect donor accounts and life-saving communication, new members must register their profile first.
+                </p>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="space-y-2.5">
+                <button
+                  type="button"
+                  id="modal-register-new-profile-btn"
+                  onClick={handleSwitchToRegisterFromModal}
+                  className="w-full py-3.5 px-4 bg-[#ba1111] hover:bg-[#9a0f0f] text-white font-bold rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-[#ba1111]/20 transition-all text-sm cursor-pointer"
+                >
+                  <UserPlus className="w-4 h-4" />
+                  <span>Register Your New Profile</span>
+                  <ArrowRight className="w-4 h-4 ml-0.5" />
+                </button>
+
+                <button
+                  type="button"
+                  id="modal-change-number-btn"
+                  onClick={() => setShowRegisterPromptModal(false)}
+                  className="w-full py-2.5 px-4 text-xs font-bold text-gray-600 hover:text-gray-900 bg-gray-100 hover:bg-gray-200 rounded-xl transition cursor-pointer"
+                >
+                  Change Mobile Number
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </RootBg>
   );

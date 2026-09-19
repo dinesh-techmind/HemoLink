@@ -56,6 +56,30 @@ export function isValidE164(phoneNumber: string): boolean {
 }
 
 /**
+ * Strips all non-digit characters from a phone number string
+ */
+export function normalizePhoneDigits(phone?: string | null): string {
+  if (!phone) return "";
+  return phone.replace(/\D/g, "");
+}
+
+/**
+ * Robust phone equality comparison across national, standard and E.164 formats
+ */
+export function arePhonesEqual(phoneA?: string | null, phoneB?: string | null): boolean {
+  if (!phoneA || !phoneB) return false;
+  const dA = normalizePhoneDigits(phoneA);
+  const dB = normalizePhoneDigits(phoneB);
+  if (!dA || !dB) return false;
+  if (dA === dB) return true;
+  // Match last 10 digits for numbers with or without country prefix (+91, etc.)
+  if (dA.length >= 10 && dB.length >= 10) {
+    return dA.slice(-10) === dB.slice(-10);
+  }
+  return false;
+}
+
+/**
  * Masks a phone number for secure display, e.g. +91 ******3210
  */
 export function maskPhoneNumber(phoneNumber: string): string {

@@ -26,6 +26,7 @@ import { AdminQrScannerModal } from "./components/AdminQrScannerModal";
 import { SmartDonorMatchingModal } from "./components/SmartDonorMatchingModal";
 import { DirectDonorSmsModal } from "./components/DirectDonorSmsModal";
 import { AdminSmartMatchingReview } from "./components/AdminSmartMatchingReview";
+import { RecentDonorActivityWidget } from "./components/RecentDonorActivityWidget";
 import { ShareSosAlertModal } from "./components/ShareSosAlertModal";
 import { HemolinkIcon, HemolinkLogo } from "./components/HemolinkLogo";
 import { getDonorSavedUnits, getMilestoneTier, getNextMilestoneProgress } from "./lib/milestones";
@@ -4153,6 +4154,14 @@ export default function App() {
                 </div>
               </div>
             )}
+
+            {/* RECENT DONOR ACTIVITY WIDGET: LIVE STREAM OF CHECK-INS, REGISTRATIONS & REMOVALS */}
+            <RecentDonorActivityWidget
+              logs={adminLogs}
+              donors={donors}
+              onOpenPassModal={(d) => setSelectedPassDonor(d)}
+              onLaunchQrScanner={() => setShowAdminQrScanner(true)}
+            />
 
             {/* ADMIN SMART DONOR MATCHING & DISPATCH REVIEW CONSOLE */}
             <AdminSmartMatchingReview

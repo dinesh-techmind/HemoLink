@@ -1684,24 +1684,6 @@ SUPPORT: support@blooddonationapp.com
           </div>
 
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-            {/* Real-Time Firestore Sync Status Badge */}
-            <div
-              id="donor-pass-firestore-status"
-              className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-[#141418] border border-border-dark text-[10.5px] font-mono text-text-muted select-none"
-              title="Donor profile attributes dynamically synchronized with Firebase Firestore in real-time"
-            >
-              <div className="flex items-center gap-1 text-emerald-400">
-                <Cloud className={`w-3.5 h-3.5 ${firestoreSyncStatus === "syncing" ? "animate-pulse text-amber-400" : "text-emerald-400"}`} />
-                <span className="font-bold">
-                  {firestoreSyncStatus === "synced" ? "Firestore Synced" : firestoreSyncStatus === "syncing" ? "Syncing..." : "Offline Profile"}
-                </span>
-              </div>
-              <span className="text-zinc-600">•</span>
-              <span>Age: <strong className="text-white font-bold">{activeDonor.age || 28}</strong></span>
-              <span className="text-zinc-600">•</span>
-              <span className="truncate max-w-[130px] font-mono text-zinc-300">{activeDonor.phone || "+91 94432 10987"}</span>
-            </div>
-
             {/* View Mode Toggle Buttons */}
             <div className="flex items-center bg-[#1A1A1E] p-0.5 sm:p-1 rounded-xl border border-border-dark text-[10px] sm:text-[11px]">
               <button
