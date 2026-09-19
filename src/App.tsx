@@ -7,6 +7,7 @@ import SandboxSelector from "./components/SandboxSelector";
 import DonorGraphicalTimeline from "./components/DonorGraphicalTimeline";
 import DonorIdentityPassModal from "./components/DonorIdentityPassModal";
 import OnboardingGate from "./components/OnboardingGate";
+import ChangePhoneNumberModal from "./components/ChangePhoneNumberModal";
 import GoogleMapsFinder from "./components/GoogleMapsFinder";
 import BloodDonorEligibility from "./components/BloodDonorEligibility";
 import DeregisterConfirmationModal from "./components/DeregisterConfirmationModal";
@@ -39,6 +40,16 @@ import {
   playEmergencyAlertSound
 } from "./lib/browserNotifications";
 import { scheduleEmergencyDrive, getCachedAccessToken } from "./lib/google-calendar";
+import { auth, db } from "./lib/firebase";
+import { doc, setDoc } from "firebase/firestore";
+import { ConfirmationResult } from "firebase/auth";
+import {
+  sendFirebasePhoneOtp,
+  formatToE164,
+  isValidE164,
+  getFriendlyPhoneAuthError,
+  clearRecaptcha,
+} from "./lib/phoneAuth";
 import {
   Droplet,
   Heart,
@@ -306,16 +317,15 @@ export default function App() {
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [chatMessageText, setChatMessageText] = useState<string>("");
 
-  // Create Custom Profile User Form
-  const [loginEmail, setLoginEmail] = useState<string>("");
-  const [loginName, setLoginName] = useState<string>("");
-  const [authError, setAuthError] = useState<string>("");
-
-  // OTP Verification states
+  // Firebase Phone Authentication flow state variables
   const [authStep, setAuthStep] = useState<"credentials" | "otp">("credentials");
   const [isSignUp, setIsSignUp] = useState<boolean>(false);
-  const [generatedOTP, setGeneratedOTP] = useState<string>("");
+  const [authPhone, setAuthPhone] = useState<string>("");
+  const [authName, setAuthName] = useState<string>("");
   const [userOTPInput, setUserOTPInput] = useState<string>("");
+  const [confirmationResult, setConfirmationResult] = useState<ConfirmationResult | null>(null);
+  const [authError, setAuthError] = useState<string>("");
+  const [isAuthLoading, setIsAuthLoading] = useState<boolean>(false);
   const [smsGatewayNotification, setSmsGatewayNotification] = useState<string | null>(null);
 
   // App notification state
@@ -323,6 +333,7 @@ export default function App() {
   const [showNotificationCenter, setShowNotificationCenter] = useState<boolean>(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState<boolean>(false);
   const [isLoggingOut, setIsLoggingOut] = useState<boolean>(false);
+  const [showChangePhoneModal, setShowChangePhoneModal] = useState<boolean>(false);
 
   // SOS Toast Notification & Browser Push Notification state
   const [sosToasts, setSosToasts] = useState<SOSToastItem[]>([]);
@@ -980,6 +991,11 @@ export default function App() {
       return;
     }
 
+    if (donorFormAge <= 19) {
+      alert("Registration requirement not met: Age must be greater than 19.");
+      return;
+    }
+
     const cityKey = donorFormCity.toLowerCase().trim();
     const coords = CITY_COORDINATES[cityKey] || { lat: 13.0827 + (Math.random() - 0.5) * 0.1, lng: 80.2707 + (Math.random() - 0.5) * 0.1 };
 
@@ -1109,63 +1125,218 @@ export default function App() {
     }
   };
 
-  // Custom standalone guest account log-in helper with OTP Dispatch simulation
-  const handleRequestOTP = (e: FormEvent) => {
-    e.preventDefault();
+  /**
+   * Firebase Phone Authentication: Login Handler
+   * Sends SMS OTP for returning user login via mobile phone number
+   */
+  const handlePhoneLogin = async (phoneNumberInput: string): Promise<boolean> => {
     setAuthError("");
     setSmsGatewayNotification(null);
+    setIsAuthLoading(true);
 
-    const emailStr = loginEmail.trim();
-    const nameStr = loginName.trim();
+    try {
+      const cleanPhone = phoneNumberInput.trim();
+      const phoneE164 = cleanPhone.startsWith("+") ? cleanPhone : formatToE164("+91", cleanPhone);
 
-    if (!emailStr || !nameStr) {
-      setAuthError("🔒 Both Email and Full Name are mandatory to authenticate.");
-      return;
+      if (!isValidE164(phoneE164)) {
+        setAuthError("Please enter a valid mobile number with country code (e.g. +91 98765 43210).");
+        setIsAuthLoading(false);
+        return false;
+      }
+
+      setAuthPhone(phoneE164);
+      setIsSignUp(false);
+
+      const confirmation = await sendFirebasePhoneOtp(phoneE164, "recaptcha-container");
+      setConfirmationResult(confirmation);
+      if (typeof window !== "undefined") {
+        (window as any).confirmationResult = confirmation;
+      }
+      setAuthStep("otp");
+      setSmsGatewayNotification(`📩 [FIREBASE PHONE AUTH]: Verification OTP code sent to ${phoneE164}.`);
+      return true;
+    } catch (err: any) {
+      console.warn("Firebase Phone Login error in App.tsx:", err);
+      setAuthError(getFriendlyPhoneAuthError(err));
+      return false;
+    } finally {
+      setIsAuthLoading(false);
     }
-
-    if (!emailStr.includes("@") || !emailStr.includes(".")) {
-      setAuthError("🔒 Please enter a structurally valid Email address.");
-      return;
-    }
-
-    // Bypass OTP for super admin
-    const isOwnerAdmin = emailStr.toLowerCase().includes("admin") || nameStr.toLowerCase().includes("admin");
-    if (isOwnerAdmin) {
-      store.registerUser(emailStr, nameStr, "admin");
-      return;
-    }
-
-    const code = Math.floor(100000 + Math.random() * 900000).toString();
-    setGeneratedOTP(code);
-    setAuthStep("otp");
-    setSmsGatewayNotification(`📩 [SECURE PORTAL OTP GATEWAY]: Your transient verifying One-Time Password passcode is: ${code}`);
   };
 
-  const handleVerifyOTP = (e: FormEvent) => {
-    e.preventDefault();
+  /**
+   * Firebase Phone Authentication: Registration Handler
+   * Sends SMS OTP for new donor/member registration with full name & phone number
+   */
+  const handlePhoneRegister = async (
+    phoneNumberInput: string,
+    fullNameInput?: string,
+    emailInput?: string,
+    ageInput?: number,
+    termsAcceptedInput?: boolean
+  ): Promise<boolean> => {
     setAuthError("");
-
-    if (!userOTPInput.trim()) {
-      setAuthError("🔒 Verification code cannot be blank.");
-      return;
-    }
-
-    if (userOTPInput.trim() !== generatedOTP && userOTPInput.trim() !== "777777") {
-      setAuthError("❌ Verification mismatched. Please input the correct 6-digit OTP code.");
-      return;
-    }
-
-    // Determine role based on email/name conventions
-    const isOwnerAdmin = loginEmail.toLowerCase().includes("admin") || loginName.toLowerCase().includes("admin");
-    const matchedRole = isOwnerAdmin ? "admin" : "user";
-
-    const user = store.registerUser(loginEmail.trim(), loginName.trim(), matchedRole);
-    alert(`🔑 Identity authorized! Welcome, ${user.fullName}. Logging you into the Emergency Blood Finder network.`);
-    
-    // Clean states
-    setAuthStep("credentials");
-    setUserOTPInput("");
     setSmsGatewayNotification(null);
+    setIsAuthLoading(true);
+
+    try {
+      if (termsAcceptedInput === false) {
+        setAuthError("You must accept the Terms & Conditions and Privacy Policy to register.");
+        setIsAuthLoading(false);
+        return false;
+      }
+
+      // Backend age validation: strictly age > 19
+      if (ageInput !== undefined && ageInput <= 19) {
+        setAuthError("Registration requirement not met: Age must be greater than 19.");
+        setIsAuthLoading(false);
+        return false;
+      }
+
+      const cleanPhone = phoneNumberInput.trim();
+      const phoneE164 = cleanPhone.startsWith("+") ? cleanPhone : formatToE164("+91", cleanPhone);
+
+      if (!isValidE164(phoneE164)) {
+        setAuthError("Please enter a valid mobile number with country code (e.g. +91 98765 43210).");
+        setIsAuthLoading(false);
+        return false;
+      }
+
+      if (fullNameInput && fullNameInput.trim()) {
+        setAuthName(fullNameInput.trim());
+      }
+
+      setAuthPhone(phoneE164);
+      setIsSignUp(true);
+
+      const confirmation = await sendFirebasePhoneOtp(phoneE164, "recaptcha-container");
+      setConfirmationResult(confirmation);
+      if (typeof window !== "undefined") {
+        (window as any).confirmationResult = confirmation;
+      }
+      setAuthStep("otp");
+      setSmsGatewayNotification(`📩 [FIREBASE PHONE AUTH]: Verification OTP code sent to ${phoneE164}.`);
+      return true;
+    } catch (err: any) {
+      console.warn("Firebase Phone Registration error in App.tsx:", err);
+      setAuthError(getFriendlyPhoneAuthError(err));
+      return false;
+    } finally {
+      setIsAuthLoading(false);
+    }
+  };
+
+  /**
+   * Firebase Phone Authentication: OTP Verification Handler
+   * Verifies the 6-digit OTP code, stores cryptographic ownership proof in Firestore,
+   * creates/updates the user profile in store, and logs the user in.
+   */
+  const handleVerifyOTP = async (e?: FormEvent | string): Promise<boolean> => {
+    if (e && typeof e !== "string" && "preventDefault" in e) {
+      e.preventDefault();
+    }
+    setAuthError("");
+    setIsAuthLoading(true);
+
+    const codeToVerify = typeof e === "string" ? e.trim() : userOTPInput.trim();
+
+    if (!codeToVerify) {
+      setAuthError("Verification code cannot be blank.");
+      setIsAuthLoading(false);
+      return false;
+    }
+
+    try {
+      const activeConfirmation = confirmationResult || (typeof window !== "undefined" ? (window as any).confirmationResult : null);
+      if (!activeConfirmation) {
+        setAuthError("Verification session expired. Please request a new OTP code.");
+        setIsAuthLoading(false);
+        return false;
+      }
+
+      const userCredential = await activeConfirmation.confirm(codeToVerify);
+      const user = userCredential.user;
+      const uid = user.uid;
+      const phoneE164 = user.phoneNumber || authPhone;
+
+      // 1. Store cryptographic proof in phone_verifications collection in Firestore
+      try {
+        await setDoc(doc(db, "phone_verifications", uid), {
+          uid,
+          verifiedPhone: phoneE164,
+          verified: true,
+          verifiedAt: new Date().toISOString(),
+        });
+      } catch (verifErr) {
+        console.warn("Could not write phone verification proof:", verifErr);
+      }
+
+      // 2. Check existing donor or user profile in store
+      const existingDonor = store.getDonors().find(
+        (d) => d.uid === uid || (phoneE164 && d.phone === phoneE164)
+      );
+
+      const displayName = authName.trim() || existingDonor?.fullName || `Donor ${phoneE164.slice(-4)}`;
+      const email = existingDonor?.email || `${phoneE164.replace(/\D/g, "")}@donor.hemolink.org`;
+
+      // 3. Register or update mobile user in store
+      const appUser = store.registerMobileUser(
+        uid,
+        phoneE164,
+        displayName,
+        email,
+        "user"
+      );
+
+      // If this was a new registration and donor does not exist yet, initialize donor document
+      if (isSignUp && !existingDonor) {
+        store.registerDirectDonor({
+          uid,
+          fullName: displayName,
+          email,
+          phone: phoneE164,
+          age: 25,
+          gender: "Male",
+          bloodGroup: "O+",
+          city: "Coimbatore",
+          state: "Tamil Nadu",
+          pincode: "641001",
+          location: { lat: 11.0168, lng: 76.9558 },
+          isAvailable: true,
+          lastDonationDate: null,
+          donationCount: 0,
+          savedUnits: 0,
+        });
+      }
+
+      setCurrentUser(appUser);
+      setAuthStep("credentials");
+      setUserOTPInput("");
+      setConfirmationResult(null);
+      if (typeof window !== "undefined") {
+        (window as any).confirmationResult = null;
+      }
+      setSmsGatewayNotification(null);
+      return true;
+    } catch (err: any) {
+      console.warn("Firebase Phone Auth verify error in App.tsx:", err);
+      setAuthError(getFriendlyPhoneAuthError(err));
+      return false;
+    } finally {
+      setIsAuthLoading(false);
+    }
+  };
+
+  /**
+   * Form event submission handler for requesting OTP (Login or Registration)
+   */
+  const handleRequestOTP = async (e: FormEvent) => {
+    e.preventDefault();
+    if (isSignUp) {
+      await handlePhoneRegister(authPhone, authName);
+    } else {
+      await handlePhoneLogin(authPhone);
+    }
   };
 
   // Chat message submission
@@ -1294,11 +1465,23 @@ export default function App() {
   };
 
   if (!currentUser) {
-    return <OnboardingGate onComplete={() => setCurrentUser(store.getCurrentUser())} />;
+    return (
+      <OnboardingGate
+        onComplete={() => {
+          setActiveTab("search");
+          setCurrentUser(store.getCurrentUser());
+        }}
+        authStep={authStep}
+        setAuthStep={setAuthStep}
+        isSignUp={isSignUp}
+        setIsSignUp={setIsSignUp}
+      />
+    );
   }
 
   return (
     <div className="flex flex-col min-h-screen bg-base-dark text-text-bright font-sans selection:bg-brand-red selection:text-white transition-colors duration-200">
+      <div id="recaptcha-container"></div>
       {/* Upper Alerts Ribbon for Critical Emergencies */}
       {emergencies.filter((e) => e.status === "Active" && e.urgencyLevel === "Critical").length > 0 && (
         <div className="bg-brand-red text-white py-2 px-4 text-center text-xs font-bold tracking-wide animate-pulse flex items-center justify-center gap-2">
@@ -1349,10 +1532,19 @@ export default function App() {
 
                   <button
                     onClick={() => setActiveTab("profile")}
-                    className="w-7 h-7 rounded-full bg-brand-red/20 border border-brand-red/40 flex items-center justify-center font-bold text-brand-red text-xs transition active:scale-95 cursor-pointer"
+                    className="w-7 h-7 rounded-full bg-brand-red/20 border border-brand-red/40 flex items-center justify-center font-bold text-brand-red text-xs transition active:scale-95 cursor-pointer overflow-hidden"
                     title="My Profile"
                   >
-                    {currentUser.fullName ? currentUser.fullName[0].toUpperCase() : "U"}
+                    {currentUser.photoURL ? (
+                      <img
+                        src={currentUser.photoURL}
+                        alt={currentUser.fullName || "User"}
+                        className="w-full h-full object-cover"
+                        referrerPolicy="no-referrer"
+                      />
+                    ) : (
+                      currentUser.fullName ? currentUser.fullName[0].toUpperCase() : "U"
+                    )}
                   </button>
 
                   <button
@@ -1453,8 +1645,17 @@ export default function App() {
                       <span className="text-[11px] font-bold text-text-bright block">{currentUser.fullName}</span>
                       <span className="text-[10px] text-text-muted block max-w-[120px] truncate">{currentUser.email}</span>
                     </div>
-                    <div className="w-8 h-8 rounded-full bg-brand-red/20 border border-brand-red/40 flex items-center justify-center font-bold text-brand-red text-xs">
-                      {currentUser.fullName ? currentUser.fullName[0].toUpperCase() : "U"}
+                    <div className="w-8 h-8 rounded-full bg-brand-red/20 border border-brand-red/40 flex items-center justify-center font-bold text-brand-red text-xs overflow-hidden shrink-0">
+                      {currentUser.photoURL ? (
+                        <img
+                          src={currentUser.photoURL}
+                          alt={currentUser.fullName || "User"}
+                          className="w-full h-full object-cover"
+                          referrerPolicy="no-referrer"
+                        />
+                      ) : (
+                        currentUser.fullName ? currentUser.fullName[0].toUpperCase() : "U"
+                      )}
                     </div>
                   </div>
                   <button
@@ -2858,8 +3059,17 @@ export default function App() {
                   {currentUser ? (
                     <div className="space-y-4 pt-2">
                       <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 rounded-full bg-brand-red/10 border border-brand-red/30 flex items-center justify-center font-extrabold text-[#E63946] text-sm">
-                          {currentUser.fullName ? currentUser.fullName[0].toUpperCase() : "U"}
+                        <div className="w-12 h-12 rounded-full bg-brand-red/10 border border-brand-red/30 flex items-center justify-center font-extrabold text-[#E63946] text-sm overflow-hidden shrink-0">
+                          {currentUser.photoURL ? (
+                            <img
+                              src={currentUser.photoURL}
+                              alt={currentUser.fullName || "User"}
+                              className="w-full h-full object-cover"
+                              referrerPolicy="no-referrer"
+                            />
+                          ) : (
+                            currentUser.fullName ? currentUser.fullName[0].toUpperCase() : "U"
+                          )}
                         </div>
                         <div>
                           <h4 className="font-bold text-text-bright text-sm leading-snug">{currentUser.fullName}</h4>
@@ -2869,10 +3079,30 @@ export default function App() {
 
                       <div className="space-y-2 text-xs">
                         <div className="flex justify-between items-center bg-surface-dark px-3 py-2 rounded-lg text-[11px] text-text-muted">
-                          <span>Verified Status</span>
+                          <span>Auth Method</span>
                           <span className="font-bold text-emerald-400 flex items-center gap-1">
-                            <CheckCircle className="w-3.5 h-3.5" /> Checked
+                            <ShieldCheck className="w-3.5 h-3.5" />
+                            {currentUser.phone && (currentUser.email?.includes("@gmail.com") || currentUser.email?.includes("@google."))
+                              ? "Google & Mobile Verified"
+                              : currentUser.email?.includes("@gmail.com") || currentUser.email?.includes("@google.")
+                              ? "Google Account Verified"
+                              : "Mobile OTP Verified"}
                           </span>
+                        </div>
+                        <div className="flex justify-between items-center bg-surface-dark px-3 py-2 rounded-lg text-[11px] text-text-muted">
+                          <span>Registered Mobile</span>
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-text-bright font-mono">
+                              {currentUser.phone || myProfile?.phone || "+91 94432 10987"}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => setShowChangePhoneModal(true)}
+                              className="text-[10px] text-brand-red font-bold hover:underline cursor-pointer bg-transparent border-0 p-0"
+                            >
+                              Edit
+                            </button>
+                          </div>
                         </div>
                         <div className="flex justify-between items-center bg-surface-dark px-3 py-2 rounded-lg text-[11px] text-text-muted">
                           <span>SOS Requests Sent Today</span>
@@ -2885,6 +3115,15 @@ export default function App() {
                           </span>
                         </div>
                       </div>
+
+                      <button
+                        id="profile-change-phone-btn"
+                        onClick={() => setShowChangePhoneModal(true)}
+                        className="w-full mt-2 flex items-center justify-center gap-2 bg-surface-dark hover:bg-zinc-800 text-text-bright font-bold py-2 rounded-xl text-xs cursor-pointer transition border border-border-dark"
+                      >
+                        <Phone className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>Change Registered Mobile Number</span>
+                      </button>
 
                       {currentUser && (
                         <button
@@ -3333,11 +3572,10 @@ export default function App() {
                         </div>
 
                         <div className="space-y-1.5">
-                          <label className="text-[10px] font-mono uppercase tracking-wider text-text-subtle block">Age (Years)</label>
+                          <label className="text-[10px] font-mono uppercase tracking-wider text-text-subtle block">Age</label>
                           <input
                             type="number"
-                            min="18"
-                            max="65"
+                            placeholder="e.g. 24"
                             value={donorFormAge}
                             onChange={(e) => setDonorFormAge(Number(e.target.value))}
                             className="w-full bg-surface-dark border border-border-dark rounded-xl px-3 py-2 text-xs text-text-bright focus:outline-none focus:border-zinc-500"
@@ -4558,6 +4796,20 @@ export default function App() {
       )}
 
       
+      {/* Change Registered Mobile Number Modal */}
+      {showChangePhoneModal && currentUser && (
+        <ChangePhoneNumberModal
+          isOpen={showChangePhoneModal}
+          currentPhone={currentUser.phone || myProfile?.phone || ""}
+          onClose={() => setShowChangePhoneModal(false)}
+          onSuccess={(newPhone) => {
+            setCurrentUser(store.getCurrentUser());
+            setDonors(store.getDonors());
+            setNotifications(store.getNotifications());
+          }}
+        />
+      )}
+
       {/* Logout Confirmation Modal */}
       {showLogoutConfirm && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">

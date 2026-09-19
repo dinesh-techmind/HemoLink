@@ -22,6 +22,8 @@ export interface Donor {
   pincode: string;
   location: GeoLocation;          // Used for Haversine matching
   profilePhotoUrl?: string;       // Avatar or placeholder
+  photoURL?: string;              // Synced Google Avatar or profile image
+  authProvider?: "phone" | "google" | "both";
   isAvailable: boolean;           // Active status toggle
   lastDonationDate: string | null; // ISO string or null
   donationCount: number;
@@ -128,11 +130,28 @@ export interface ProfileLog {
 export interface AppUser {
   uid: string;
   email: string;
+  phone?: string;
   fullName?: string;
+  photoURL?: string;
+  authProvider?: "phone" | "google" | "both";
   role: UserRole;
   requestsToday: number;
   lastRequestDate?: string;
   createdAt: string;
+}
+
+export interface AccountRecoveryRequest {
+  id: string;
+  fullName: string;
+  previousPhone: string;
+  newPhone: string;
+  bloodGroup?: BloodGroup;
+  city?: string;
+  registeredEmail?: string;
+  additionalDetails?: string;
+  status: "pending" | "approved" | "rejected";
+  submittedAt: string;
+  reviewedAt?: string;
 }
 
 export interface AppNotification {

@@ -19,12 +19,44 @@ service cloud.firestore {
       );
     }
     
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isOwnerOrAdmin(userId) {
+      return isOwner(userId) || isAdmin();
+    }
+
+    function isPhoneVerified(phone) {
+      return isSignedIn() && (
+        (request.auth.token.phone_number == phone) ||
+        (exists(/databases/$(database)/documents/phone_verifications/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/phone_verifications/$(request.auth.uid)).data.verifiedPhone == phone &&
+         get(/databases/$(database)/documents/phone_verifications/$(request.auth.uid)).data.verified == true) ||
+        isAdmin()
+      );
+    }
+
+    function isPhoneUnchangedOrVerified(oldData, newData) {
+      return (!('phone' in newData) || newData.phone == '' || (('phone' in oldData) && oldData.phone == newData.phone)) ||
+             isPhoneVerified(newData.phone);
+    }
+
     function isValidId(id) { 
       return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); 
     }
 
     function incoming() {
       return request.resource.data;
+    }
+
+    function isValidUser(data) {
+      return data != null
+        && (!('uid' in data) || (data.uid is string && data.uid.size() <= 128))
+        && (!('email' in data) || (data.email is string && data.email.size() <= 128))
+        && (!('phone' in data) || (data.phone is string && data.phone.size() <= 32))
+        && (!('fullName' in data) || (data.fullName is string && data.fullName.size() <= 128))
+        && (!('role' in data) || (data.role is string && data.role.size() <= 32));
     }
 
     function isValidDonor(data) {
@@ -86,11 +118,29 @@ service cloud.firestore {
         && (!('referenceId' in data) || (data.referenceId is string && data.referenceId.size() <= 128));
     }
 
-    // Donors collection: Public readers, robust validation-checked writers
+    // User profile documents: Read and written with valid schema and ID validation
+    match /users/{userId} {
+      allow read: if true;
+      allow create, update: if isValidId(userId) && isValidUser(incoming());
+      allow delete: if isOwnerOrAdmin(userId);
+    }
+
+    match /user_profiles/{userId} {
+      allow read: if true;
+      allow create, update: if isValidId(userId) && isValidUser(incoming());
+      allow delete: if isOwnerOrAdmin(userId);
+    }
+
+    // Phone OTP ownership verification records
+    match /phone_verifications/{userId} {
+      allow read, write: if isValidId(userId);
+    }
+
+    // Donors collection: Public readers for search; verified donor creation and updates with valid schema
     match /donors/{donorId} {
       allow read: if true;
       allow create, update: if isValidId(donorId) && isValidDonor(incoming());
-      allow delete: if isAdmin();
+      allow delete: if isOwnerOrAdmin(donorId) || isAdmin();
     }
 
     // Emergency requests: Anyone can read and write with proper schema validation
@@ -137,6 +187,13 @@ service cloud.firestore {
     match /admins/{adminId} {
       allow read: if true;
       allow write: if false;
+    }
+
+    // Account recovery requests: For user access assistance and administrative review
+    match /account_recovery_requests/{requestId} {
+      allow read: if isSignedIn();
+      allow create: if isValidId(requestId);
+      allow update, delete: if isAdmin();
     }
 
     // Test connection endpoint

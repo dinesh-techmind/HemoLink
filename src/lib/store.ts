@@ -634,8 +634,32 @@ export class AppStore {
     onAuthStateChanged(auth, (user) => {
       if (user) {
         console.log("Firebase Auth State Sync: Active Session detected ->", user.uid);
-        // Note: Firebase auth provides valid credentials for Firestore rules,
-        // but we do not automatically bypass the login screen on page refresh.
+        // If user is non-anonymous (e.g. verified Phone Auth) and no currentUser is selected,
+        // restore matching user profile to maintain session across refreshes
+        if (!user.isAnonymous && !this.currentUser) {
+          const userPhone = user.phoneNumber || "";
+          let match = this.users.find((u) => u.uid === user.uid || (u.phone && userPhone && u.phone === userPhone));
+          if (!match) {
+            const donorMatch = this.donors.find((d) => d.uid === user.uid || (d.phone && userPhone && d.phone === userPhone));
+            if (donorMatch) {
+              match = {
+                uid: donorMatch.uid,
+                email: donorMatch.email || `${userPhone.replace(/\D/g, "")}@donor.hemolink.org`,
+                phone: donorMatch.phone || userPhone,
+                fullName: donorMatch.fullName,
+                role: "user",
+                requestsToday: 0,
+                createdAt: donorMatch.createdAt || new Date().toISOString(),
+              };
+              this.users.push(match);
+            }
+          }
+          if (match) {
+            this.currentUser = match;
+            this.saveToStorage();
+            this.notify();
+          }
+        }
       } else {
         // Automatically sign in anonymously so we have a valid auth token for Firestore rules
         signInAnonymously(auth).catch((err) => {
@@ -836,9 +860,16 @@ export class AppStore {
       this.chats = storedChats ? JSON.parse(storedChats) : SEED_CHATS;
       this.messages = storedMessages ? JSON.parse(storedMessages) : SEED_MESSAGES;
       this.users = storedUsers ? JSON.parse(storedUsers) : SEED_USERS;
-      // On page load/refresh, require authentication: display the login screen
-      this.currentUser = null;
-      localStorage.removeItem("blood_finder_current_user");
+      // Restore active authenticated session if present in localStorage
+      if (storedCurrentUser) {
+        try {
+          this.currentUser = JSON.parse(storedCurrentUser);
+        } catch {
+          this.currentUser = null;
+        }
+      } else {
+        this.currentUser = null;
+      }
       this.notifications = storedNotifications ? JSON.parse(storedNotifications) : [];
       this.adminLogs = storedAdminLogs ? JSON.parse(storedAdminLogs) : SEED_ADMIN_LOGS;
       this.smsLogs = storedSmsLogs ? JSON.parse(storedSmsLogs) : [];
@@ -946,10 +977,201 @@ export class AppStore {
     return newUser;
   }
 
-  public logOut() {
-    this.currentUser = null;
+  public registerMobileUser(
+    uid: string,
+    phone: string,
+    fullName: string,
+    email?: string,
+    role: UserRole = "user"
+  ): AppUser {
+    let existing = this.users.find(
+      (u) => u.uid === uid || (u.phone && phone && u.phone === phone)
+    );
+    if (existing) {
+      if (fullName) existing.fullName = fullName;
+      if (email) existing.email = email;
+      existing.phone = phone;
+      if (existing.uid !== uid) {
+        existing.uid = uid;
+      }
+      existing.authProvider = existing.email && !existing.email.includes("@donor.hemolink.org") ? "both" : "phone";
+      this.currentUser = existing;
+      this.syncToFirestore("users", existing.uid, existing);
+      this.saveToStorage();
+      this.notify();
+      return existing;
+    }
+    const cleanEmail = email || `${phone.replace(/\D/g, "")}@donor.hemolink.org`;
+    const newUser: AppUser = {
+      uid,
+      email: cleanEmail,
+      phone,
+      fullName: fullName || "Verified Donor",
+      role,
+      authProvider: email ? "both" : "phone",
+      requestsToday: 0,
+      createdAt: new Date().toISOString(),
+    };
+    this.users.push(newUser);
+    this.currentUser = newUser;
+    this.syncToFirestore("users", newUser.uid, newUser);
     this.saveToStorage();
     this.notify();
+    return newUser;
+  }
+
+  public registerGoogleUser(
+    uid: string,
+    email: string,
+    fullName: string,
+    phone?: string,
+    photoURL?: string
+  ): AppUser {
+    const isSuperAdminEmail = email?.toLowerCase() === "srini16dinesh@gmail.com";
+    const assignedRole: UserRole = isSuperAdminEmail ? "admin" : "user";
+
+    // 1. Check existing AppUser by UID or matching Email
+    let existing = this.users.find(
+      (u) => u.uid === uid || (email && u.email && u.email.toLowerCase() === email.toLowerCase())
+    );
+
+    if (existing) {
+      if (existing.uid !== uid) {
+        existing.uid = uid; // Synchronize UID with active Google Auth UID for Firestore security rules
+      }
+      if (fullName && (!existing.fullName || existing.fullName === "Verified Donor" || existing.fullName === "Google Member")) {
+        existing.fullName = fullName;
+      }
+      if (email && !existing.email) {
+        existing.email = email;
+      }
+      if (phone && !existing.phone) {
+        existing.phone = phone;
+      }
+      if (photoURL) {
+        existing.photoURL = photoURL;
+      }
+      if (isSuperAdminEmail) {
+        existing.role = "admin";
+      }
+      existing.authProvider = existing.phone ? "both" : "google";
+      this.currentUser = existing;
+      this.syncToFirestore("users", existing.uid, existing);
+
+      // 2. Also ensure matching Donor profile consistency
+      const matchingDonor = this.donors.find(
+        (d) => d.uid === uid || (email && d.email.toLowerCase() === email.toLowerCase()) || (existing?.phone && d.phone === existing.phone)
+      );
+      if (matchingDonor) {
+        if (matchingDonor.uid !== uid) {
+          matchingDonor.uid = uid;
+        }
+        if (fullName && !matchingDonor.fullName) {
+          matchingDonor.fullName = fullName;
+        }
+        if (photoURL && !matchingDonor.photoURL) {
+          matchingDonor.photoURL = photoURL;
+          matchingDonor.profilePhotoUrl = photoURL;
+        }
+        matchingDonor.authProvider = matchingDonor.phone ? "both" : "google";
+        matchingDonor.updatedAt = new Date().toISOString();
+        this.syncToFirestore("donors", matchingDonor.uid, matchingDonor);
+      }
+
+      this.saveToStorage();
+      this.notify();
+      return existing;
+    }
+
+    // 3. New Google User - Check if there is an existing donor record under this email or phone
+    const matchingDonor = this.donors.find(
+      (d) => d.uid === uid || (email && d.email.toLowerCase() === email.toLowerCase()) || (phone && d.phone === phone)
+    );
+
+    const newUserPhone = phone || matchingDonor?.phone || "";
+    const newUserName = fullName || matchingDonor?.fullName || "Google Member";
+
+    const newUser: AppUser = {
+      uid,
+      email: email || `${uid}@google.hemolink.org`,
+      phone: newUserPhone,
+      fullName: newUserName,
+      photoURL,
+      authProvider: newUserPhone ? "both" : "google",
+      role: assignedRole,
+      requestsToday: 0,
+      createdAt: new Date().toISOString(),
+    };
+
+    if (matchingDonor) {
+      matchingDonor.uid = uid;
+      if (photoURL) {
+        matchingDonor.photoURL = photoURL;
+        matchingDonor.profilePhotoUrl = photoURL;
+      }
+      matchingDonor.authProvider = "both";
+      matchingDonor.updatedAt = new Date().toISOString();
+      this.syncToFirestore("donors", matchingDonor.uid, matchingDonor);
+    }
+
+    this.users.push(newUser);
+    this.currentUser = newUser;
+    this.syncToFirestore("users", newUser.uid, newUser);
+    this.saveToStorage();
+    this.notify();
+    return newUser;
+  }
+
+  public updatePhoneNumber(newPhone: string): void {
+    if (!this.currentUser) {
+      throw new Error("You must be signed in to update your phone number.");
+    }
+    const currentUid = this.currentUser.uid;
+    const cleanNewPhone = newPhone.trim();
+
+    // Prevent duplicate phone collision with another donor
+    const duplicate = this.donors.find((d) => d.uid !== currentUid && d.phone === cleanNewPhone);
+    if (duplicate) {
+      throw new Error("This mobile number is already registered to another active donor.");
+    }
+
+    // Update currentUser state
+    this.currentUser.phone = cleanNewPhone;
+    const userInList = this.users.find((u) => u.uid === currentUid);
+    if (userInList) {
+      userInList.phone = cleanNewPhone;
+      this.syncToFirestore("users", currentUid, userInList);
+    }
+
+    // Update matching donor profile in store and sync with Firestore
+    const donorProfile = this.donors.find((d) => d.uid === currentUid);
+    if (donorProfile) {
+      donorProfile.phone = cleanNewPhone;
+      donorProfile.updatedAt = new Date().toISOString();
+      this.syncToFirestore("donors", donorProfile.uid, donorProfile);
+    }
+
+    // Audit log entry for security traceability
+    this.logAdminAction(
+      "Mobile Number Updated",
+      `Verified phone number updated for donor ${this.currentUser.fullName || currentUid} to ${cleanNewPhone}`,
+      currentUid
+    );
+
+    this.saveToStorage();
+    this.notify();
+  }
+
+  public async logOut() {
+    this.currentUser = null;
+    localStorage.removeItem("blood_finder_current_user");
+    this.saveToStorage();
+    this.notify();
+    try {
+      await auth.signOut();
+    } catch {
+      // Ignored
+    }
   }
 
   // Donors getters/actions
@@ -961,16 +1183,32 @@ export class AppStore {
     if (!this.currentUser) {
       throw new Error("You must be logged in to register as a donor");
     }
+    // Backend validation: age must strictly be > 19
+    if (donor.age <= 19) {
+      throw new Error("Registration requirement not met: Age must be greater than 19.");
+    }
     // Remove if already registered
     this.donors = this.donors.filter((d) => d.uid !== this.currentUser!.uid);
 
     const newDonor: Donor = {
       ...donor,
       uid: this.currentUser.uid,
+      photoURL: donor.photoURL || this.currentUser.photoURL,
+      profilePhotoUrl: donor.profilePhotoUrl || this.currentUser.photoURL,
+      authProvider: this.currentUser.authProvider || "both",
       donationCount: 0,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
+
+    // Ensure user profile consistency
+    this.currentUser.fullName = donor.fullName;
+    this.currentUser.phone = donor.phone;
+    if (this.currentUser.email.includes("@donor.hemolink.org") && donor.email) {
+      this.currentUser.email = donor.email;
+    }
+    this.currentUser.authProvider = "both";
+    this.syncToFirestore("users", this.currentUser.uid, this.currentUser);
 
     this.donors.push(newDonor);
     this.saveToStorage();
@@ -983,6 +1221,10 @@ export class AppStore {
   }
 
   public registerDirectDonor(donorData: Omit<Donor, "createdAt" | "updatedAt">): Donor {
+    // Backend validation: age must strictly be > 19
+    if (donorData.age <= 19) {
+      throw new Error("Registration requirement not met: Age must be greater than 19.");
+    }
     const existingIndex = this.donors.findIndex(
       (d) => d.email.toLowerCase() === donorData.email.toLowerCase() || d.uid === donorData.uid
     );

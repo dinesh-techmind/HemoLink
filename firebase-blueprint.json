@@ -94,9 +94,32 @@
         "referenceId": { "type": "string" }
       },
       "required": ["id", "donorPhone", "message", "status", "timestamp", "referenceId"]
+    },
+    "AppUser": {
+      "title": "AppUser",
+      "description": "User profile document containing authentication metadata, role, and contact phone.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Owner Auth uid key" },
+        "email": { "type": "string", "format": "email" },
+        "phone": { "type": "string" },
+        "fullName": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "superadmin", "user"] },
+        "requestsToday": { "type": "integer" },
+        "lastRequestDate": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "role", "createdAt"]
     }
   },
   "firestore": {
+    "/users/{uid}": {
+      "schema": { "$ref": "#/entities/AppUser" },
+      "description": "User account profiles accessible and modifiable with strict schema validation."
+    },
+    "/phone_verifications/{uid}": {
+      "description": "Cryptographic OTP verification records confirming ownership of mobile numbers."
+    },
     "/donors/{uid}": {
       "schema": { "$ref": "#/entities/Donor" },
       "description": "Primary user profiles indexing physical geolocations of volunteers."

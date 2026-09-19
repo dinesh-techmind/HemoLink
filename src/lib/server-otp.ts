@@ -59,89 +59,26 @@ function getGeminiClient(): GoogleGenAI | null {
 }
 
 /**
- * Generates a 5-digit OTP using Google Gemini AI (gemini-3.8-flash) with structured output
- * and instant cryptographic fallback.
+ * Generates a cryptographically secure 6-digit or 5-digit OTP using node crypto CSPRNG.
+ * NOTE: As per system security architecture, Google Gemini must NOT generate, send, or verify OTP codes.
+ * All client authentication uses Firebase Phone Authentication.
  */
 export async function generateOtpWithGemini(
   email: string,
   purpose: OtpPurpose = "forgot_password",
   fullName?: string
 ): Promise<GeneratedOtpDetails> {
-  const ai = getGeminiClient();
+  // Always use cryptographically secure random integers (CSPRNG)
+  // Gemini must NOT generate, send, or verify OTP codes.
+  const randomVal = crypto.randomInt(10000, 99999);
+  const cryptoOtp = String(randomVal);
 
-  if (ai) {
-    try {
-      const isRegister = purpose === "register";
-      const prompt = `You are the backend AI Security Module for HEMOLINK, an Emergency Blood Network.
-Generate an unpredictable, cryptographically sound 5-digit numeric OTP (between 10000 and 99999) for this user verification request.
-
-Context:
-- Recipient: ${email}
-- User Name: ${fullName || "Blood Network Member"}
-- Purpose: ${isRegister ? "New Account Registration & Donor Verification" : "Account Password Recovery"}
-
-Return ONLY a valid JSON object with:
-{
-  "otp": "A random string of EXACTLY 5 digits between 10000 and 99999 (e.g. '84920')",
-  "securityAdvisory": "A 1-sentence urgent security advisory for emergency blood network members.",
-  "subjectLine": "A high-priority, clear email subject line for their Gmail inbox.",
-  "personalizedIntro": "A warm, 1-2 sentence emergency medical network greeting confirming their verification request."
-}`;
-
-      // 6-second timeout to allow Gemini connection and generation
-      const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error("Gemini OTP generation timed out (6s)")), 6000)
-      );
-
-      const geminiCall = (async () => {
-        try {
-          return await ai.models.generateContent({
-            model: "gemini-3.1-flash-lite",
-            contents: prompt,
-            config: {
-              responseMimeType: "application/json",
-            },
-          });
-        } catch (_err) {
-          // Backup model if 3.1-flash-lite experiences transient issue
-          return await ai.models.generateContent({
-            model: "gemini-flash-latest",
-            contents: prompt,
-            config: {
-              responseMimeType: "application/json",
-            },
-          });
-        }
-      })();
-
-      const response = await Promise.race([geminiCall, timeoutPromise]);
-      const rawText = response.text?.trim() || "{}";
-      const parsed = JSON.parse(rawText);
-
-      const candidateOtp = typeof parsed.otp === "string" ? parsed.otp.trim() : String(parsed.otp || "").trim();
-
-      if (/^\d{5}$/.test(candidateOtp)) {
-        console.log(`[GEMINI AI] Generated 5-digit OTP (${candidateOtp}) via Google Gemini AI for ${email}`);
-        return {
-          otp: candidateOtp,
-          source: "gemini-3.8-flash", // satisfies interface type
-          securityAdvisory: parsed.securityAdvisory || "Never share this verification code with anyone.",
-          customSubject: parsed.subjectLine,
-          personalizedIntro: parsed.personalizedIntro,
-        };
-      } else {
-        console.warn(`[GEMINI AI] Output OTP "${candidateOtp}" did not pass 5-digit regex. Using crypto fallback.`);
-      }
-    } catch (aiErr: any) {
-      console.warn(`[GEMINI AI] Generation note: ${aiErr?.message || aiErr}. Switching to cryptographic fallback.`);
-    }
-  }
-
-  // Cryptographically secure fallback ensures 100% service uptime
-  const fallbackOtp = crypto.randomInt(10000, 100000).toString();
   return {
-    otp: fallbackOtp,
+    otp: cryptoOtp,
     source: "crypto-fallback",
+    securityAdvisory: "Never share your verification code with anyone.",
+    customSubject: "HemoLink Emergency Verification Code",
+    personalizedIntro: `Hello ${fullName || "Blood Network Member"}, your secure verification code is ready.`,
   };
 }
 
